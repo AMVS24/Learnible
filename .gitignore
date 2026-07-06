@@ -1,0 +1,26 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Generated pipeline output
+output/
+
+# Audio artifacts
+*.mp3
+*.wav
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# Large / copyrighted test input — keep local, don't redistribute
+Operating Systems - Three Easy Pieces.pdf
