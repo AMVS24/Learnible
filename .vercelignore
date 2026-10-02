@@ -1,0 +1,19 @@
+# Deploying from the repo root (Root Directory is set to `web` in Project
+# Settings, but "Include files outside the Root Directory" is on so web/'s
+# ../output symlink target resolves) apparently doesn't fully honour the
+# root .gitignore for upload purposes -- output/narration.wav (139MB) was
+# getting swept in and tripping Vercel's 100MB-per-file limit. web/'s own
+# data (synced into web/public/data, already under the limit) is what
+# actually needs to ship; the raw pipeline output does not.
+output/
+*.pdf
+web-original/
+.venv/
+venv/
+__pycache__/
+# Legacy single-range data (PDF 69-92) from before per-chapter output; the
+# app now only reads public/data/<book>/... Anchored so chapter pages/ dirs
+# still ship.
+/web/public/data/manifest.json
+/web/public/data/narration.mp3
+/web/public/data/pages/

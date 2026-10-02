@@ -4,6 +4,7 @@
     python -m src.main 46-82      # 1-based inclusive range
     python -m src.main 50         # a single page
     python -m src.main 46-82 --no-llm   # skip the qwen3 prose step (CPU only)
+    python -m src.main 166-174 --out output/ostep/ch16   # see src/chapters.py
 
 Pipeline: DocLayout-YOLO layout detection -> assemble chunks & figures
 (code merge, caption->label, callout/title/code typing) -> qwen3 prose
@@ -16,6 +17,7 @@ import argparse
 import json
 import sys
 from collections import Counter
+from pathlib import Path
 
 import ollama
 
@@ -23,6 +25,7 @@ from . import config
 from .assemble import assemble, merge_cross_page
 from .layout import LayoutDetector
 from .models import Chunk, Figure, ReadingUnit
+from .page_export import export_page_images
 from .reference import build_reading_sequence, map_references
 from .subcategorize import Subcategorizer
 
@@ -41,19 +44,26 @@ def _parse_pages(spec: str | None) -> tuple[int, int]:
 
 
 def _output_dict(pdf: str, start: int, end: int, units: list[ReadingUnit],
-                 figures: list[Figure], orphans: list[Figure]) -> dict:
+                 figures: list[Figure], orphans: list[Figure],
+                 pages: dict[int, dict]) -> dict:
     return {
         "source": {"pdf": pdf, "page_start": start, "page_end": end},
+        "pages": pages,
         "reading_sequence": [
             {
                 "index": u.chunk.block.index,
                 "page": u.chunk.block.page,
                 "category": u.chunk.category.value,
                 "text": u.chunk.block.text,
+                "bbox": [round(v, 1) for v in u.chunk.block.bbox],
                 "figure_refs": [f.label for f in u.figures],
             }
             for u in units
         ],
+        # No pre-cropped figure PNG: the frontend crops the figure+caption
+        # region straight out of the full page image at render time, keyed
+        # off bbox/caption_bbox (matches the recovered original app -- one
+        # fewer export step, and captions stay attached to their figure).
         "figures": [
             {
                 "index": f.candidate.index,
@@ -63,6 +73,8 @@ def _output_dict(pdf: str, start: int, end: int, units: list[ReadingUnit],
                 "source": f.source,
                 "confidence": round(f.confidence, 2),
                 "bbox": [round(v, 1) for v in f.candidate.bbox],
+                "caption_bbox": [round(v, 1) for v in f.candidate.caption_bbox]
+                                if f.candidate.caption_bbox else None,
                 "caption": " ".join(f.candidate.nearby_text.split())[:160],
             }
             for f in figures
@@ -108,9 +120,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="1-based inclusive range, e.g. 46-82 or 50")
     parser.add_argument("--no-llm", action="store_true",
                         help="skip qwen3 prose sub-categorisation (CPU only)")
+    parser.add_argument("--out", default=None,
+                        help="output directory (default: output/); per-chapter runs "
+                             "from src/chapters.py use output/<book>/<chapter>/")
     args = parser.parse_args(argv)
     page_start, page_end = _parse_pages(args.pages)
-    config.OUTPUT_DIR.mkdir(exist_ok=True)
+    out_dir = Path(args.out) if args.out else config.OUTPUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Detecting layout in {config.PDF_PATH.name} pages {page_start}-{page_end} "
           f"with DocLayout-YOLO ...")
@@ -138,10 +154,14 @@ def main(argv: list[str] | None = None) -> int:
     refs, orphans = map_references(chunks, figures)
     units = build_reading_sequence(chunks, figures, refs)
 
-    out = config.OUTPUT_DIR / "reading_sequence.json"
+    pages_dir = out_dir / "pages"
+    pages = export_page_images(str(config.PDF_PATH), page_start, page_end, pages_dir)
+    print(f"  wrote {len(pages)} page image(s) -> {pages_dir}")
+
+    out = out_dir / "reading_sequence.json"
     out.write_text(
         json.dumps(_output_dict(str(config.PDF_PATH), page_start, page_end,
-                                units, figures, orphans), ensure_ascii=False, indent=2),
+                                units, figures, orphans, pages), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     _print_summary(chunks, figures, units, orphans)

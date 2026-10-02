@@ -103,6 +103,8 @@ class FigureCandidate:
     kind: str           # detection hint: "image" | "diagram"
     nearby_text: str = ""              # caption text near the element
     label: Optional[str] = None        # parsed caption label, e.g. "Figure 4.2"
+    caption_bbox: Optional[BBox] = None  # the caption region's own bbox, for
+                                          # cropping figure+caption together
     table_rows: Optional[list[list[Optional[str]]]] = None
 
 

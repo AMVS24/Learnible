@@ -1,0 +1,28 @@
+{
+  "_comment": "Render queue for `python -m src.chapters queue`. A unit with no start/stop heading is the whole chapter body (id chNN). A partial unit is trimmed from `start` (inclusive; default: the chapter opener) up to but not including `stop` (default: the end of the body). Headings are matched against the PDF's own text. Order = render order. Units whose output already exists are skipped, never overwritten.",
+  "units": [
+    {"chapter": "26"},
+    {"chapter": "27"},
+    {"chapter": "28", "id": "ch28-s1-2", "title": "Locks: §28.1–28.2 (partial)", "stop": "28.3 Building A Lock"},
+    {"chapter": "31", "id": "ch31-s1-2", "title": "Semaphores: §31.1–31.2 (partial)", "stop": "31.3 Semaphores As Condition Variables"},
+    {"chapter": "32", "id": "ch32-deadlock", "title": "Deadlock: §32.3, up to Prevention (partial)", "start": "32.3 Deadlock Bugs", "stop": "Prevention"},
+    {"chapter": "13"},
+    {"chapter": "15"},
+    {"chapter": "16"},
+    {"chapter": "23", "id": "ch23-s3", "title": "VAX/VMS: §23.3 A Real Address Space (partial)", "start": "23.3 A Real Address Space", "stop": "23.4 Page Replacement"},
+    {"chapter": "14"},
+    {"chapter": "17"},
+    {"chapter": "18"},
+    {"chapter": "19", "id": "ch19-s1-5", "title": "TLBs: §19.1–19.5 (partial)", "stop": "19.6 Issue: Replacement Policy"},
+    {"chapter": "20", "id": "ch20-s1-4", "title": "Smaller Tables: §20.1–20.4 (partial)", "stop": "20.5 Swapping the Page Tables to Disk"},
+    {"chapter": "21"},
+    {"chapter": "22"},
+    {"chapter": "2", "id": "ch02-s1-3", "title": "Intro to OS: §2.1–2.3 (partial)", "stop": "2.4 Persistence"},
+    {"chapter": "36", "id": "ch36-s1-7", "title": "I/O Devices: §36.1–36.7 (partial)", "stop": "36.8 Case Study: A Simple IDE Disk Driver"},
+    {"chapter": "4"},
+    {"chapter": "5"},
+    {"chapter": "6", "id": "ch06-s1-3", "title": "Limited Direct Execution: §6.1–6.3 (partial)", "stop": "6.4 Worried About Concurrency?"},
+    {"chapter": "7"},
+    {"chapter": "8"}
+  ]
+}

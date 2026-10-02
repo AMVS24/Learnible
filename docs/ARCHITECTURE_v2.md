@@ -126,7 +126,10 @@ splitting.
 mid-word, e.g. `read-`, and the next page opens lower-case, `ing`) is merged back
 into one chunk by `merge_cross_page`: a trailing hyphen is dissolved, otherwise
 the halves are space-joined. This runs after assembly, before the LLM step, so
-the model sees the whole paragraph. (Handles 2-page splits — all cases in range.)
+the model sees the whole paragraph. The two halves don't need to be on adjacent
+pages -- one or more whole pages of figure/table/callout content (which never
+becomes a Chunk) can sit between them and the merge still fires, since figures
+never appear in the chunk list the stitcher walks.
 
 **Typing a `plain text` region (deterministic, pre-LLM):**
 

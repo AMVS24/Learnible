@@ -27,6 +27,13 @@ _SHADE_WHITE = 245
 # sync with the v1 splicer heuristic.
 _MONO_NAMES = ("mono", "courier", "consol", "menlo", "nimbusmon", "cmtt", "txtt")
 
+# PDF fonts often encode these as single ligature glyphs; decompose them so
+# the TTS pronounces "efficiently", not a glyph it doesn't recognise.
+_LIGATURES = {
+    "ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl",
+    "ﬃ": "ffi", "ﬄ": "ffl", "ﬅ": "st", "ﬆ": "st",
+}
+
 
 class LayoutDetector:
     """Thin wrapper around the DocLayout-YOLO model. The model is heavy to load,
@@ -146,20 +153,61 @@ def _dedup_same_class(
 
 
 def _text_and_mono(page: "fitz.Page", bbox: BBox) -> tuple[str, bool]:
-    """Extract the text inside `bbox` and whether its body is monospace."""
+    """Extract the text inside `bbox` and whether its body is monospace.
+
+    PyMuPDF gives text per *line*, not per paragraph: a justified line in the
+    PDF has no explicit space character connecting it to the next line, and a
+    hyphenated line-wrap ("virtualiza-" / "tion") has no space either. Joining
+    every span in the region with a bare "".join (the old behaviour) therefore
+    fused words across line breaks ("somehowshare", "virtualiza-tion" as two
+    words). Lines are joined explicitly here: a plain space between lines, or
+    the hyphen dissolved when a line ends with one and the next starts
+    lower-case (the same rule `merge_cross_page` uses across page breaks).
+
+    `clip=rect` also pulls in a line from a *neighbouring* region whenever its
+    bbox merely grazes the crop edge (e.g. the YOLO box starts at y=350.5 but
+    the previous paragraph's last line ends at y=350.6 -- a 0.1pt sliver),
+    producing stray fragments like a lone "yp" or "g p" glued onto the front
+    of the chunk. A line is only kept if most (>=50%) of its own height falls
+    inside the box, not just a graze."""
     rect = fitz.Rect(*bbox)
     d = page.get_text("dict", clip=rect)
-    parts: list[str] = []
+    lines: list[str] = []
     mono_chars = total_chars = 0
     for block in d.get("blocks", []):
         for line in block.get("lines", []):
-            for span in line.get("spans", []):
+            ly0, ly1 = line.get("bbox", (0, 0, 0, 0))[1], line.get("bbox", (0, 0, 0, 0))[3]
+            line_h = ly1 - ly0
+            overlap = max(0.0, min(ly1, rect.y1) - max(ly0, rect.y0))
+            if line_h > 0 and overlap / line_h < 0.5:
+                continue  # a graze from a neighbouring region, not this one
+            spans = line.get("spans", [])
+            line_text = "".join(span.get("text", "") for span in spans)
+            for glyph, plain in _LIGATURES.items():
+                line_text = line_text.replace(glyph, plain)
+            if line_text.strip():
+                lines.append(line_text)
+            for span in spans:
                 s = span.get("text", "")
-                parts.append(s)
                 n = len(s.replace(" ", ""))
                 total_chars += n
                 if any(k in span.get("font", "").lower() for k in _MONO_NAMES):
                     mono_chars += n
-    text = " ".join("".join(parts).split())
+    text = _join_lines(lines)
     mono = total_chars > 0 and mono_chars / total_chars > 0.5
     return text, mono
+
+
+def _join_lines(lines: list[str]) -> str:
+    out = ""
+    for raw in lines:
+        ln = raw.strip()
+        if not ln:
+            continue
+        if not out:
+            out = ln
+        elif out.endswith("-") and ln[:1].islower():
+            out = out[:-1] + ln  # dissolve the line-wrap hyphen
+        else:
+            out = out + " " + ln
+    return " ".join(out.split())

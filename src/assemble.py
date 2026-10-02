@@ -157,11 +157,18 @@ def merge_cross_page(chunks: list[Chunk]) -> list[Chunk]:
     """Stitch a paragraph split across a page break back into one chunk.
 
     A split is detected when a prose chunk ends mid-sentence (no terminal
-    punctuation -- typically a hyphen) and the next prose chunk, on the very next
+    punctuation -- typically a hyphen) and the next prose chunk, on a later
     page, begins lower-case. A trailing hyphen is dissolved ('read-' + 'ing' ->
     'reading'); otherwise the halves are space-joined. Runs before the LLM step
-    so the model sees the whole paragraph. (Handles 2-page splits, which covers
-    every case in the test range.)"""
+    so the model sees the whole paragraph.
+
+    The page check is `>`, not `== +1`: a figure/table/callout can occupy one
+    or more whole pages between the two halves with no prose chunk of its own
+    (figures/tables/captions never appear in `chunks`, only in the separate
+    `figures` list -- see `assemble()`), so the two paragraph-half chunks are
+    still adjacent in this list however many intervening pages there were.
+    The linguistic signals (no terminal punctuation + lower-case continuation)
+    are what actually gate the merge, not page adjacency."""
     out: list[Chunk] = []
     for c in chunks:
         if out:
@@ -169,7 +176,7 @@ def merge_cross_page(chunks: list[Chunk]) -> list[Chunk]:
             at, ct = a.block.text.rstrip(), c.block.text.lstrip()
             if (a.category in _STITCH_CATS and c.category in _STITCH_CATS
                     and a.reason == PENDING_SUBCAT and c.reason == PENDING_SUBCAT
-                    and c.block.page == a.block.page + 1
+                    and c.block.page > a.block.page
                     and at and ct and not at.endswith(_SENTENCE_ENDERS)
                     and ct[:1].islower()):
                 a.block.text = (at[:-1] + ct) if at.endswith("-") else (at + " " + ct)
@@ -296,7 +303,8 @@ def _tb(r: Region, text: str | None = None) -> TextBlock:
 def _fig(r: Region, cap: Region | None, label: str | None,
          cat: FigureCategory, reason: str, kind: str) -> Figure:
     cand = FigureCandidate(page=r.page, index=r.index, bbox=r.bbox, kind=kind,
-                           nearby_text=cap.text if cap else "", label=label)
+                           nearby_text=cap.text if cap else "", label=label,
+                           caption_bbox=cap.bbox if cap else None)
     src = "text" if kind == "code" else "visual"
     return Figure(cand, cat, label, r.confidence, reason, source=src)
 
