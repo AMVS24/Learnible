@@ -53,6 +53,7 @@ export default function PlayerBar({
   onPrevChunk,
   onNextChunk,
   scrub,
+  translucent = false,
 }: {
   audioRef: RefObject<HTMLAudioElement | null>;
   audioSrc: string;
@@ -62,6 +63,7 @@ export default function PlayerBar({
   onPrevChunk: () => void;
   onNextChunk: () => void;
   scrub?: ReactNode; // the press-and-hold scrub gizmo (ScrubWheel), next to the transport
+  translucent?: boolean; // frosted, see-through (scroll mode lays it over the pages)
 }) {
   const [playing, setPlaying] = useState(false);
 
@@ -72,7 +74,11 @@ export default function PlayerBar({
   };
 
   return (
-    <footer className="relative border-t border-neutral-800 bg-neutral-900/60 px-4 py-3">
+    <footer
+      className={`relative border-t px-4 py-3 ${
+        translucent ? "border-white/5 bg-neutral-950/55 backdrop-blur-md" : "border-neutral-800 bg-neutral-900/60"
+      }`}
+    >
       <audio
         ref={audioRef}
         src={audioSrc}

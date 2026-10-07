@@ -60,6 +60,62 @@ export default function Reader({
   const [displayPage, setDisplayPage] = useState(narratedPages[0]);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Scroll mode lays the header and player over the pages as translucent
+  // bars (more room for the page); their heights pad the scroll view.
+  const overlay = mode === "scroll";
+  const headerRef = useRef<HTMLElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [bars, setBars] = useState({ top: 0, bottom: 0 });
+  useEffect(() => {
+    const h = headerRef.current, f = footerRef.current;
+    if (!h || !f) return;
+    const update = () => setBars({ top: h.offsetHeight, bottom: f.offsetHeight });
+    const ro = new ResizeObserver(update);
+    ro.observe(h);
+    ro.observe(f);
+    update();
+    return () => ro.disconnect();
+  }, []);
+
+  // --- auto-hiding bars (scroll mode) ----------------------------------------
+  // Header + player show and hide together: they fade out after a short idle
+  // and come back when the mouse nears the top/bottom edge, on a shortcut
+  // (Space, arrows, Q) or a tap. They stay while paused, while the mouse is
+  // over them, and while the scrub wheel is open.
+  const [chromeShown, setChromeShown] = useState(true);
+  const [paused, setPaused] = useState(true);
+  const hideTimer = useRef<number | null>(null);
+  const overBars = useRef(false);
+  const showChrome = (ms = 2500) => {
+    setChromeShown(true);
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => {
+      if (!overBars.current) setChromeShown(false);
+    }, ms);
+  };
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const sync = () => setPaused(a.paused);
+    a.addEventListener("play", sync);
+    a.addEventListener("pause", sync);
+    return () => {
+      a.removeEventListener("play", sync);
+      a.removeEventListener("pause", sync);
+    };
+  }, []);
+  useEffect(() => () => { if (hideTimer.current) window.clearTimeout(hideTimer.current); }, []);
+  const chromeVisible = !overlay || chromeShown || paused || previewTime != null;
+  const onRootPointerMove = (e: React.PointerEvent) => {
+    if (!overlay || e.pointerType !== "mouse") return;
+    const r = e.currentTarget.getBoundingClientRect();
+    if (e.clientY - r.top < bars.top + 48 || r.bottom - e.clientY < bars.bottom + 48) showChrome();
+  };
+  const barHover = {
+    onMouseEnter: () => { overBars.current = true; setChromeShown(true); },
+    onMouseLeave: () => { overBars.current = false; showChrome(); },
+  };
+
   const shownTime = previewTime ?? currentTime;
   const active = useMemo(() => chunkAt(chunks, shownTime), [chunks, shownTime]);
 
@@ -195,9 +251,52 @@ export default function Reader({
     if (target != null) jumpTo(target);
   };
 
+  // Keyboard shortcuts (any mode): Space play/pause, Left/Right previous/next
+  // chunk. Q (scrub wheel) is handled by ScrubWheel; while it's open it owns
+  // the arrow keys. Ignored while typing in a field. A ref keeps the
+  // long-lived listener on the latest handlers.
+  const keys = useRef({ toggle: () => {}, chunk: (d: 1 | -1) => { void d; }, reveal: () => {}, scrubbing: false });
+  useEffect(() => {
+    keys.current = {
+      toggle: () => { const a = audioRef.current; if (a) { if (a.paused) void a.play(); else a.pause(); } },
+      chunk: (d) => skipChunk(d),
+      reveal: () => showChrome(),
+      scrubbing: previewTime != null,
+    };
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.ctrlKey || e.metaKey || e.altKey || (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)))) return;
+      const k = keys.current;
+      if (e.key === "q" || e.key === "Q") { k.reveal(); return; }
+      if (k.scrubbing) return;
+      if (e.key === " ") { e.preventDefault(); if (!e.repeat) k.toggle(); k.reveal(); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); k.chunk(-1); k.reveal(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); k.chunk(1); k.reveal(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const hiddenTop = overlay && !chromeVisible ? "-translate-y-full opacity-0 pointer-events-none" : "";
+  const hiddenBottom = overlay && !chromeVisible ? "translate-y-full opacity-0 pointer-events-none" : "";
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col bg-neutral-950 text-neutral-100"
+      onPointerMove={onRootPointerMove}
+      onPointerDown={(e) => { if (overlay && e.pointerType !== "mouse") showChrome(3500); }}
+    >
+      <header
+        ref={headerRef}
+        {...(overlay ? barHover : {})}
+        className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${
+          overlay
+            ? `absolute inset-x-0 top-0 z-20 border-white/5 bg-neutral-950/55 backdrop-blur-md transition duration-300 ${hiddenTop}`
+            : "border-neutral-800"
+        }`}
+      >
         <div className="min-w-0">
           <h1 className="truncate text-sm font-medium text-neutral-300">{title}</h1>
           {/* Chapter-relative page (what's printed on the page) plus the
@@ -225,7 +324,7 @@ export default function Reader({
         </div>
       </header>
 
-      <main className="flex-1 overflow-hidden">
+      <main className={overlay ? "absolute inset-0" : "flex-1 overflow-hidden"}>
         {mode === "reading" ? (
           <PageView base={base} pageInfo={pages[displayPage]} chunk={highlightChunk} />
         ) : mode === "scroll" ? (
@@ -237,13 +336,22 @@ export default function Reader({
             highlight={highlightChunk}
             recenterKey={recenterKey}
             onPick={(c) => jumpTo(c.t0, true)}
+            insetTop={bars.top}
+            insetBottom={bars.bottom}
+            chromeVisible={chromeVisible}
           />
         ) : (
           <OnTheGoView base={base} figures={activeFigures} pages={pages} page={displayPage} />
         )}
       </main>
 
+      <div
+        ref={footerRef}
+        {...(overlay ? barHover : {})}
+        className={overlay ? `absolute inset-x-0 bottom-0 z-20 transition duration-300 ${hiddenBottom}` : ""}
+      >
       <PlayerBar
+        translucent={overlay}
         audioRef={audioRef}
         audioSrc={`${base}/${manifest.audio}`}
         onTimeUpdate={handleTimeUpdate}
@@ -264,6 +372,7 @@ export default function Reader({
           />
         }
       />
+      </div>
     </div>
   );
 }
