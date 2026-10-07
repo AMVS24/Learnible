@@ -5,6 +5,7 @@ import type { Chunk, FigureEntry, Manifest } from "@/lib/types";
 import PageView from "./PageView";
 import OnTheGoView from "./OnTheGoView";
 import PlayerBar from "./PlayerBar";
+import ScrubWheel from "./ScrubWheel";
 
 // Latest chunk with t0 <= t (binary search -- chunks are in t0 order because
 // build_manifest lays them out sequentially). Ported from the recovered
@@ -42,16 +43,20 @@ export default function Reader({
 
   const [mode, setMode] = useState<"reading" | "onTheGo">("reading");
   const [currentTime, setCurrentTime] = useState(0);
+  // While the scrub wheel is open, the page/highlight follow its preview
+  // position instead of the (paused) audio.
+  const [previewTime, setPreviewTime] = useState<number | null>(null);
   const [displayPage, setDisplayPage] = useState(narratedPages[0]);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const active = useMemo(() => chunkAt(chunks, currentTime), [chunks, currentTime]);
+  const shownTime = previewTime ?? currentTime;
+  const active = useMemo(() => chunkAt(chunks, shownTime), [chunks, shownTime]);
 
   // Ported from the original app's onTime(): the highlight box only shows
   // while a chunk is actually being read (not during the inter-chunk pause),
   // but the active-figure set persists through the pause (see
   // Chunk.active_figures in tts/synth_local.py's build_manifest).
-  const inChunk = !!active && currentTime <= active.t1 + 0.05;
+  const inChunk = !!active && shownTime <= active.t1 + 0.05;
   const highlightChunk = inChunk ? active : null;
   const activeFigures = (active?.active_figures ?? [])
     .map((l) => figureByLabel.get(l))
@@ -171,6 +176,24 @@ export default function Reader({
         onNextPage={() => skipPage(1)}
         onPrevChunk={() => skipChunk(-1)}
         onNextChunk={() => skipChunk(1)}
+        scrub={
+          <ScrubWheel
+            audioRef={audioRef}
+            chunks={chunks}
+            onPreview={(t) => {
+              setPreviewTime(t);
+              const c = t == null ? null : chunkAt(chunks, t);
+              if (c && c.page !== displayPage) setDisplayPage(c.page);
+            }}
+            onCommit={(t) => {
+              const a = audioRef.current;
+              if (!a) return;
+              a.currentTime = t;
+              handleTimeUpdate(t);
+              a.play();
+            }}
+          />
+        }
       />
     </div>
   );
