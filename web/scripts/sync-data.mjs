@@ -12,7 +12,9 @@
 // Only the mp3 ships, never narration.wav: Vercel (Hobby plan) rejects any
 // single file over 100MB. reading_sequence.json is pipeline-internal (the
 // manifest already carries everything the app needs).
-import { cp, mkdir, access, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, access, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { statSync } from "node:fs";
+import sharp from "sharp";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,6 +25,26 @@ const CHAPTER_FILES = ["manifest.json", "narration.mp3", "pages"];
 
 async function exists(p) {
   try { await access(p); return true; } catch { return false; }
+}
+
+// Page images ship as WebP, not the pipeline's PNGs: about half the bytes,
+// and page turns wait on that download (the reader hides a page until its
+// image has loaded). Conversion happens only here, on the synced copy --
+// output/ keeps the PNGs -- and the copied manifest is pointed at the .webp
+// files. Skipped when the .webp is already newer than its PNG.
+async function syncChapter(src, dest) {
+  await mkdir(path.join(dest, "pages"), { recursive: true });
+  await cp(path.join(src, "narration.mp3"), path.join(dest, "narration.mp3"));
+  for (const f of await readdir(path.join(src, "pages"))) {
+    if (!f.endsWith(".png")) continue;
+    const from = path.join(src, "pages", f);
+    const to = path.join(dest, "pages", f.replace(/\.png$/, ".webp"));
+    const fresh = await stat(to).then((t) => t.mtimeMs >= statSync(from).mtimeMs, () => false);
+    if (!fresh) await sharp(from).webp({ quality: 82 }).toFile(to);
+  }
+  const manifest = JSON.parse(await readFile(path.join(src, "manifest.json"), "utf-8"));
+  for (const page of Object.values(manifest.pages)) page.image = page.image.replace(/\.png$/, ".webp");
+  await writeFile(path.join(dest, "manifest.json"), JSON.stringify(manifest));
 }
 
 async function main() {
@@ -46,9 +68,7 @@ async function main() {
       const present = await Promise.all(CHAPTER_FILES.map((f) => exists(path.join(src, f))));
       ch.rendered = present.every(Boolean);
       if (!ch.rendered) continue;
-      for (const f of CHAPTER_FILES) {
-        await cp(path.join(src, f), path.join(bookOut, ch.id, f), { recursive: true });
-      }
+      await syncChapter(src, path.join(bookOut, ch.id));
       console.log(`  synced ${catalog.id}/${ch.id}  ${ch.title}`);
     }
     await writeFile(path.join(bookOut, "catalog.json"), JSON.stringify(catalog, null, 2));

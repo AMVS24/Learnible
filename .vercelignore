@@ -17,3 +17,6 @@ __pycache__/
 /web/public/data/manifest.json
 /web/public/data/narration.mp3
 /web/public/data/pages/
+# sync-data now ships page images as WebP; PNG copies from earlier syncs stay
+# on disk but aren't uploaded.
+/web/public/data/*/*/pages/*.png

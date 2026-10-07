@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Chunk, FigureEntry, Manifest } from "@/lib/types";
 import PageView from "./PageView";
 import OnTheGoView from "./OnTheGoView";
@@ -56,6 +56,23 @@ export default function Reader({
   const activeFigures = (active?.active_figures ?? [])
     .map((l) => figureByLabel.get(l))
     .filter((f): f is FigureEntry => !!f);
+
+  // Page images download on demand, so a page turn used to wait on the
+  // network. Warm the browser cache: the pages either side of the current
+  // one right away, then every other page of the unit once the browser is
+  // idle (a unit is ~5-15 pages of ~50-120 KB WebP).
+  useEffect(() => {
+    const warm = (p: number) => {
+      const info = pages[p];
+      if (info) new Image().src = `${base}/pages/${info.image}`;
+    };
+    const i = narratedPages.indexOf(displayPage);
+    for (const d of [1, -1, 2]) if (narratedPages[i + d] != null) warm(narratedPages[i + d]);
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
+    const cancel = window.cancelIdleCallback ?? window.clearTimeout;
+    const id = idle(() => narratedPages.forEach(warm));
+    return () => cancel(id);
+  }, [base, pages, narratedPages, displayPage]);
 
   const handleTimeUpdate = (t: number) => {
     setCurrentTime(t);

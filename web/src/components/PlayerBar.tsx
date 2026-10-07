@@ -1,8 +1,48 @@
 "use client";
 
-import { useState, type RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+
+// Inline SVG icons (24x24 grid, currentColor) instead of emoji glyphs, which
+// render differently on every platform and look out of place.
+function Icon({ children, size = 20 }: { children: ReactNode; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+const PrevPageIcon = () => (
+  <Icon><rect x="5" y="5" width="2.4" height="14" rx="1.2" /><path d="M19 6.2v11.6a1 1 0 0 1-1.55.83l-8.6-5.8a1 1 0 0 1 0-1.66l8.6-5.8A1 1 0 0 1 19 6.2Z" /></Icon>
+);
+const NextPageIcon = () => (
+  <Icon><rect x="16.6" y="5" width="2.4" height="14" rx="1.2" /><path d="M5 6.2v11.6a1 1 0 0 0 1.55.83l8.6-5.8a1 1 0 0 0 0-1.66l-8.6-5.8A1 1 0 0 0 5 6.2Z" /></Icon>
+);
+const PrevChunkIcon = () => (
+  <Icon><path d="M11.5 7v10a.8.8 0 0 1-1.28.64L3.6 12.64a.8.8 0 0 1 0-1.28l6.62-5A.8.8 0 0 1 11.5 7Z" /><path d="M20.5 7v10a.8.8 0 0 1-1.28.64l-6.62-5a.8.8 0 0 1 0-1.28l6.62-5A.8.8 0 0 1 20.5 7Z" /></Icon>
+);
+const NextChunkIcon = () => (
+  <Icon><path d="M12.5 7v10a.8.8 0 0 0 1.28.64l6.62-5a.8.8 0 0 0 0-1.28l-6.62-5A.8.8 0 0 0 12.5 7Z" /><path d="M3.5 7v10a.8.8 0 0 0 1.28.64l6.62-5a.8.8 0 0 0 0-1.28l-6.62-5A.8.8 0 0 0 3.5 7Z" /></Icon>
+);
+const PlayIcon = () => (
+  <Icon size={22}><path d="M8 5.6v12.8a1.1 1.1 0 0 0 1.68.93l10.1-6.4a1.1 1.1 0 0 0 0-1.86l-10.1-6.4A1.1 1.1 0 0 0 8 5.6Z" /></Icon>
+);
+const PauseIcon = () => (
+  <Icon size={22}><rect x="6" y="5" width="4.2" height="14" rx="1.3" /><rect x="13.8" y="5" width="4.2" height="14" rx="1.3" /></Icon>
+);
+const VolumeIcon = () => (
+  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M11 5 6 9H3v6h3l5 4V5Z" fill="currentColor" stroke="none" />
+    <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+    <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+  </svg>
+);
+
+// touch-manipulation: no double-tap-to-zoom wait on mobile, so taps register
+// immediately.
+const btn =
+  "flex h-10 w-10 touch-manipulation items-center justify-center rounded-full text-neutral-300 transition hover:bg-neutral-800 hover:text-white active:scale-90";
 
 export default function PlayerBar({
   audioRef,
@@ -34,58 +74,44 @@ export default function PlayerBar({
       <audio
         ref={audioRef}
         src={audioSrc}
-        onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
+        preload="auto"
+        // While a seek is still fetching audio, ignore time updates (the
+        // skip handlers already moved the page/highlight to the target), and
+        // re-sync once the seek lands.
+        onTimeUpdate={(e) => { if (!e.currentTarget.seeking) onTimeUpdate(e.currentTarget.currentTime); }}
+        onSeeked={(e) => onTimeUpdate(e.currentTarget.currentTime)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
       />
-      {/* flex-wrap: on a narrow (mobile) viewport, five buttons + a volume
-          slider + a select don't fit on one row -- without wrapping, the
-          row overflows and the leftmost button (Previous page) ends up
-          rendered off-screen to the left, unreachable, not just visually
-          cramped. Transport controls get their own row so they never
-          reflow around the volume/speed controls. */}
+      {/* Transport controls get their own row so they never reflow around
+          the volume/speed controls on a narrow (mobile) viewport. */}
       <div className="flex flex-col items-center gap-2">
-        <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={onPrevPage}
-            title="Previous page"
-            className="rounded-md px-2 py-1.5 text-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-          >
-            ⏮
+        <div className="flex items-center justify-center gap-1.5">
+          <button onClick={onPrevPage} title="Previous page" aria-label="Previous page" className={btn}>
+            <PrevPageIcon />
           </button>
-          <button
-            onClick={onPrevChunk}
-            title="Previous chunk"
-            className="rounded-md px-2 py-1.5 text-lg text-neutral-300 hover:bg-neutral-800 hover:text-white"
-          >
-            ⏪
+          <button onClick={onPrevChunk} title="Previous chunk" aria-label="Previous chunk" className={btn}>
+            <PrevChunkIcon />
           </button>
           <button
             onClick={togglePlay}
             title="Play / pause"
-            className="mx-1 rounded-full bg-emerald-600 px-4 py-2 text-lg text-white hover:bg-emerald-500"
+            aria-label={playing ? "Pause" : "Play"}
+            className="mx-2 flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-emerald-500 text-neutral-950 shadow-lg shadow-emerald-900/40 transition hover:bg-emerald-400 active:scale-95"
           >
-            {playing ? "⏸" : "▶"}
+            {playing ? <PauseIcon /> : <PlayIcon />}
           </button>
-          <button
-            onClick={onNextChunk}
-            title="Next chunk"
-            className="rounded-md px-2 py-1.5 text-lg text-neutral-300 hover:bg-neutral-800 hover:text-white"
-          >
-            ⏩
+          <button onClick={onNextChunk} title="Next chunk" aria-label="Next chunk" className={btn}>
+            <NextChunkIcon />
           </button>
-          <button
-            onClick={onNextPage}
-            title="Next page"
-            className="rounded-md px-2 py-1.5 text-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-          >
-            ⏭
+          <button onClick={onNextPage} title="Next page" aria-label="Next page" className={btn}>
+            <NextPageIcon />
           </button>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
           <label className="flex items-center gap-1.5 text-neutral-500" title="Volume">
-            🔊
+            <VolumeIcon />
             <input
               type="range" min={0} max={1} step={0.05} defaultValue={1}
               onChange={(e) => { if (audioRef.current) audioRef.current.volume = +e.target.value; }}

@@ -27,6 +27,7 @@ function FigureCrop({ base, figure, pageInfo }: { base: string; figure: FigureEn
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- pipeline-generated, not a static build asset */}
       <img
+        key={`${base}/${pageInfo.image}`} // swap immediately on figure change (see PageView)
         src={`${base}/pages/${pageInfo.image}`}
         alt={figure.label ?? `figure ${figure.index}`}
         className="absolute max-w-none"
