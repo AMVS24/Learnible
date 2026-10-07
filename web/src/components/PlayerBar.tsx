@@ -42,7 +42,7 @@ const VolumeIcon = () => (
 // touch-manipulation: no double-tap-to-zoom wait on mobile, so taps register
 // immediately.
 const btn =
-  "flex h-9 w-9 touch-manipulation items-center justify-center rounded-full text-neutral-300 transition hover:bg-neutral-800 hover:text-white active:scale-90";
+  "flex h-10 w-10 touch-manipulation items-center justify-center rounded-full text-neutral-300 transition hover:bg-neutral-800 hover:text-white active:scale-90";
 
 export default function PlayerBar({
   audioRef,
@@ -75,7 +75,7 @@ export default function PlayerBar({
 
   return (
     <footer
-      className={`relative border-t px-4 py-2 ${
+      className={`relative border-t px-4 py-3 ${
         translucent ? "border-white/5 bg-neutral-950/55 backdrop-blur-md" : "border-neutral-800 bg-neutral-900/60"
       }`}
     >
@@ -91,13 +91,10 @@ export default function PlayerBar({
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
       />
-      {/* One row: transport centred; volume + speed at the right. The left
-          spacer balances the right group so the transport stays centred on
-          wider screens; on phones the volume slider is hidden (hardware
-          buttons) and everything fits on one line. */}
-      <div className="flex items-center gap-2">
-        <div className="hidden flex-1 sm:block" />
-        <div className="flex flex-1 items-center justify-center gap-1 sm:flex-none">
+      {/* Transport controls get their own row so they never reflow around
+          the volume/speed controls on a narrow (mobile) viewport. */}
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center justify-center gap-1.5">
           <button onClick={onPrevPage} title="Previous page" aria-label="Previous page" className={btn}>
             <PrevPageIcon />
           </button>
@@ -108,7 +105,7 @@ export default function PlayerBar({
             onClick={togglePlay}
             title="Play / pause"
             aria-label={playing ? "Pause" : "Play"}
-            className="mx-1.5 flex h-11 w-11 touch-manipulation items-center justify-center rounded-full bg-emerald-500 text-neutral-950 shadow-lg shadow-emerald-900/40 transition hover:bg-emerald-400 active:scale-95"
+            className="mx-2 flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-emerald-500 text-neutral-950 shadow-lg shadow-emerald-900/40 transition hover:bg-emerald-400 active:scale-95"
           >
             {playing ? <PauseIcon /> : <PlayIcon />}
           </button>
@@ -118,11 +115,11 @@ export default function PlayerBar({
           <button onClick={onNextPage} title="Next page" aria-label="Next page" className={btn}>
             <NextPageIcon />
           </button>
-          {scrub && <div className="ml-1 border-l border-neutral-700/60 pl-1">{scrub}</div>}
+          {scrub && <div className="ml-1 border-l border-neutral-800 pl-1.5">{scrub}</div>}
         </div>
 
-        <div className="flex items-center justify-end gap-3 sm:flex-1">
-          <label className="hidden items-center gap-1.5 text-neutral-400 sm:flex" title="Volume">
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <label className="flex items-center gap-1.5 text-neutral-500" title="Volume">
             <VolumeIcon />
             <input
               type="range" min={0} max={1} step={0.05} defaultValue={1}
@@ -130,14 +127,15 @@ export default function PlayerBar({
               className="w-20 accent-emerald-500"
             />
           </label>
+
           <select
             title="Playback speed"
             defaultValue={1}
             onChange={(e) => { if (audioRef.current) audioRef.current.playbackRate = +e.target.value; }}
-            className="rounded-md border border-neutral-700 bg-neutral-900/80 px-1.5 py-1 text-xs text-neutral-300"
+            className="rounded-md border border-neutral-700 bg-neutral-900 px-1.5 py-1 text-xs text-neutral-300"
           >
-            {SPEEDS.map((sp) => (
-              <option key={sp} value={sp}>{sp}×</option>
+            {SPEEDS.map((s) => (
+              <option key={s} value={s}>{s}×</option>
             ))}
           </select>
         </div>

@@ -42,6 +42,7 @@ export default function ScrollView({
   onPick,
   insetTop = 0,
   insetBottom = 0,
+  chromeVisible = true,
 }: {
   base: string;
   pages: Record<number, PageInfo>;
@@ -54,6 +55,7 @@ export default function ScrollView({
   // and last page clear them, the controls sit below the header.
   insetTop?: number;
   insetBottom?: number;
+  chromeVisible?: boolean; // the zoom control hides/shows with the bars
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const boxes = useRef(new Map<number, HTMLElement>());
@@ -197,7 +199,7 @@ export default function ScrollView({
       stop();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(e.key)) stop();
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(e.key)) stop();
     };
     const onPointer = (e: PointerEvent) => {
       // A press on the scrollbar itself (outside the content box).
@@ -306,7 +308,9 @@ export default function ScrollView({
 
       {/* Zoom control (Ctrl + scroll, pinch and Ctrl +/-/0 work too). */}
       <div
-        className="absolute right-4 flex items-center gap-0.5 rounded-full border border-white/10 bg-neutral-950/70 p-1 text-xs text-neutral-300 shadow-lg shadow-black/40 backdrop-blur-md"
+        className={`absolute right-4 flex items-center gap-0.5 rounded-full border border-white/10 bg-neutral-950/70 p-1 text-xs text-neutral-300 shadow-lg shadow-black/40 backdrop-blur-md transition duration-300 ${
+          chromeVisible ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
         style={{ top: insetTop + 10 }}
       >
         <button
