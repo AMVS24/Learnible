@@ -183,9 +183,15 @@ export default function ScrollView({
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const r = sc.getBoundingClientRect();
-        // Continuous: small pinch deltas give small steps, a mouse notch ~10%.
-        const d = Math.max(-120, Math.min(120, e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY));
-        zoomRef.current?.(Math.exp(-d * 0.0015), e.clientX - r.left, e.clientY - r.top);
+        // Calibrated like Firefox's PDF viewer (pdf.js, web/app.js): a
+        // touchpad pinch -- small continuous pixel deltas -- scales by
+        // exp(-deltaY / 100) per event; a mouse wheel's big notches count as
+        // ticks of 30 px, each a x1.1 step (pdf.js PIXELS_PER_LINE_SCALE and
+        // its default zoom step).
+        const px = e.deltaMode === 1 ? e.deltaY * 30 : e.deltaMode === 2 ? e.deltaY * sc.clientHeight : e.deltaY;
+        const pinch = e.deltaMode === 0 && e.deltaX === 0 && Math.abs(e.deltaY) < 50;
+        const factor = pinch ? Math.exp(-e.deltaY / 100) : Math.pow(STEP, -px / 30);
+        zoomRef.current?.(factor, e.clientX - r.left, e.clientY - r.top);
         return;
       }
       stop();
