@@ -348,7 +348,10 @@ export default function ScrollView({
         onClick={backToCurrent}
         aria-label="Back to the passage being read"
         title="Back to the passage being read"
-        className={`absolute right-4 top-1/2 flex -translate-y-1/2 touch-manipulation items-center gap-2 rounded-full bg-emerald-500 py-2.5 pl-3 pr-3.5 text-sm font-medium text-neutral-950 shadow-lg shadow-black/50 transition-all duration-200 hover:bg-emerald-400 active:scale-95 ${
+        // Bottom right: just above the player when the bars are showing,
+        // dropping toward the edge when they hide.
+        style={{ bottom: (chromeVisible ? insetBottom : 0) + 20 }}
+        className={`absolute right-5 flex touch-manipulation items-center gap-2 rounded-full bg-emerald-500 py-2.5 pl-3 pr-3.5 text-sm font-medium text-neutral-950 shadow-lg shadow-black/50 transition-all duration-300 hover:bg-emerald-400 active:scale-95 ${
           !follow && active && where !== "visible" ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-4 opacity-0"
         }`}
       >
