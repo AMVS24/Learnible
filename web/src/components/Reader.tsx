@@ -60,6 +60,23 @@ export default function Reader({
   const [displayPage, setDisplayPage] = useState(narratedPages[0]);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Scroll mode lays the header and player over the pages as translucent
+  // bars (more room for the page); their heights pad the scroll view.
+  const overlay = mode === "scroll";
+  const headerRef = useRef<HTMLElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [bars, setBars] = useState({ top: 0, bottom: 0 });
+  useEffect(() => {
+    const h = headerRef.current, f = footerRef.current;
+    if (!h || !f) return;
+    const update = () => setBars({ top: h.offsetHeight, bottom: f.offsetHeight });
+    const ro = new ResizeObserver(update);
+    ro.observe(h);
+    ro.observe(f);
+    update();
+    return () => ro.disconnect();
+  }, []);
+
   const shownTime = previewTime ?? currentTime;
   const active = useMemo(() => chunkAt(chunks, shownTime), [chunks, shownTime]);
 
@@ -196,8 +213,15 @@ export default function Reader({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+    <div className="relative flex min-h-0 flex-1 flex-col bg-neutral-950 text-neutral-100">
+      <header
+        ref={headerRef}
+        className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${
+          overlay
+            ? "absolute inset-x-0 top-0 z-20 border-white/5 bg-neutral-950/55 backdrop-blur-md"
+            : "border-neutral-800"
+        }`}
+      >
         <div className="min-w-0">
           <h1 className="truncate text-sm font-medium text-neutral-300">{title}</h1>
           {/* Chapter-relative page (what's printed on the page) plus the
@@ -225,7 +249,7 @@ export default function Reader({
         </div>
       </header>
 
-      <main className="flex-1 overflow-hidden">
+      <main className={overlay ? "absolute inset-0" : "flex-1 overflow-hidden"}>
         {mode === "reading" ? (
           <PageView base={base} pageInfo={pages[displayPage]} chunk={highlightChunk} />
         ) : mode === "scroll" ? (
@@ -237,13 +261,17 @@ export default function Reader({
             highlight={highlightChunk}
             recenterKey={recenterKey}
             onPick={(c) => jumpTo(c.t0, true)}
+            insetTop={bars.top}
+            insetBottom={bars.bottom}
           />
         ) : (
           <OnTheGoView base={base} figures={activeFigures} pages={pages} page={displayPage} />
         )}
       </main>
 
+      <div ref={footerRef} className={overlay ? "absolute inset-x-0 bottom-0 z-20" : ""}>
       <PlayerBar
+        translucent={overlay}
         audioRef={audioRef}
         audioSrc={`${base}/${manifest.audio}`}
         onTimeUpdate={handleTimeUpdate}
@@ -264,6 +292,7 @@ export default function Reader({
           />
         }
       />
+      </div>
     </div>
   );
 }
