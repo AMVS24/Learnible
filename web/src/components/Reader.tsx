@@ -128,7 +128,10 @@ export default function Reader({
           {/* Chapter-relative page (what's printed on the page) plus the
               PDF page -- they differ: OSTEP restarts numbering per chapter. */}
           <p className="text-xs text-neutral-500">
-            Page {displayPage - (manifest.source.chapter_start ?? manifest.source.page_start) + 1} &middot; PDF p.{displayPage} &middot;{" "}
+            Page {manifest.source.page_offset != null
+              ? displayPage - manifest.source.page_offset
+              : displayPage - (manifest.source.chapter_start ?? manifest.source.page_start) + 1}{" "}
+            &middot; PDF p.{displayPage} &middot;{" "}
             {narratedPages.indexOf(displayPage) + 1} / {narratedPages.length}
           </p>
         </div>

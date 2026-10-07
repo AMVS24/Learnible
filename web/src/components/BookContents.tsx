@@ -142,7 +142,9 @@ function TextbookView({ book, variant, minutes, onPick }: { book: Book; variant:
                     <span className="shrink-0 font-sans text-[10px] text-emerald-500">♪ {minutes[ch.id]} min</span>
                   )}
                   <span className="mb-1 min-w-4 flex-1 border-b border-dotted border-neutral-700" />
-                  <span className="shrink-0 tabular-nums text-neutral-500">{ch.pdf_start}</span>
+                  <span className="shrink-0 tabular-nums text-neutral-500">
+                    {book.page_offset != null ? ch.pdf_start - book.page_offset : ch.pdf_start}
+                  </span>
                 </span>
               );
               return (
@@ -166,7 +168,8 @@ function TextbookView({ book, variant, minutes, onPick }: { book: Book; variant:
         </section>
       ))}
       <p className="mt-4 font-sans text-[11px] text-neutral-600">
-        Page numbers are PDF pages. ♪ = narrated; greyed entries aren&apos;t narrated yet.
+        {book.page_offset != null ? "Page numbers are the book's printed pages." : "Page numbers are PDF pages."}{" "}
+        ♪ = narrated; greyed entries aren&apos;t narrated yet.
       </p>
     </div>
   );

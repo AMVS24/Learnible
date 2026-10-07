@@ -120,17 +120,20 @@ def main(argv: list[str] | None = None) -> int:
                         help="1-based inclusive range, e.g. 46-82 or 50")
     parser.add_argument("--no-llm", action="store_true",
                         help="skip qwen3 prose sub-categorisation (CPU only)")
+    parser.add_argument("--pdf", default=None,
+                        help="source PDF (default: config.PDF_PATH); src/chapters.py passes the active book's")
     parser.add_argument("--out", default=None,
                         help="output directory (default: output/); per-chapter runs "
                              "from src/chapters.py use output/<book>/<chapter>/")
     args = parser.parse_args(argv)
+    pdf_path = Path(args.pdf) if args.pdf else config.PDF_PATH
     page_start, page_end = _parse_pages(args.pages)
     out_dir = Path(args.out) if args.out else config.OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Detecting layout in {config.PDF_PATH.name} pages {page_start}-{page_end} "
+    print(f"Detecting layout in {pdf_path.name} pages {page_start}-{page_end} "
           f"with DocLayout-YOLO ...")
-    regions = LayoutDetector().detect(str(config.PDF_PATH), page_start, page_end)
+    regions = LayoutDetector().detect(str(pdf_path), page_start, page_end)
     chunks, figures = assemble(regions)
     chunks = merge_cross_page(chunks)  # stitch paragraphs split across pages
     print(f"  {len(regions)} regions -> {len(chunks)} chunks, {len(figures)} figures")
@@ -155,12 +158,12 @@ def main(argv: list[str] | None = None) -> int:
     units = build_reading_sequence(chunks, figures, refs)
 
     pages_dir = out_dir / "pages"
-    pages = export_page_images(str(config.PDF_PATH), page_start, page_end, pages_dir)
+    pages = export_page_images(str(pdf_path), page_start, page_end, pages_dir)
     print(f"  wrote {len(pages)} page image(s) -> {pages_dir}")
 
     out = out_dir / "reading_sequence.json"
     out.write_text(
-        json.dumps(_output_dict(str(config.PDF_PATH), page_start, page_end,
+        json.dumps(_output_dict(str(pdf_path), page_start, page_end,
                                 units, figures, orphans, pages), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )

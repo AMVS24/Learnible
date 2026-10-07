@@ -46,6 +46,10 @@ export interface Manifest {
     page_start: number;
     page_end: number;
     chapter_start?: number; // chapter opener page; absent on older whole-chapter renders (== page_start)
+    // Printed page = PDF page - page_offset, for books with one continuous
+    // numbering (Lewis & Papadimitriou: 14). null/absent = per-chapter
+    // numbering (OSTEP), counted from chapter_start.
+    page_offset?: number | null;
     trim?: { start: string | null; stop: string | null }; // partial units only
   };
   audio: string; // filename in /data/, e.g. "narration.mp3"
@@ -78,5 +82,6 @@ export interface ChapterEntry {
 export interface Book {
   id: string; // "ostep"
   title: string;
+  page_offset?: number | null; // see Manifest.source.page_offset
   chapters: ChapterEntry[];
 }

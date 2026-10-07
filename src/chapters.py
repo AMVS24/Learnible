@@ -37,15 +37,80 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from . import config
+from .books import BOOKS
 
+# The active book (see src/books.py); switched by `--book` via use_book().
 BOOK_ID = "ostep"
-BOOK_TITLE = "Operating Systems: Three Easy Pieces"
+BOOK: dict = BOOKS[BOOK_ID]
+BOOK_TITLE = BOOK["title"]
 BOOK_DIR = config.OUTPUT_DIR / BOOK_ID
+UNITS_PATH = config.PROJECT_ROOT / "src" / f"{BOOK_ID}_units.json"
 _ORIGINAL_ENV = dict(os.environ)  # snapshot before YOLO mutates CUDA_VISIBLE_DEVICES (see render)
 
 _CHAPTER_NUM = re.compile(r"^(\d{1,2}|[A-I])$")
 _PART = re.compile(r"^Part [IVX]+$")
 _OUTLINE_CH = re.compile(r"^(\d{1,2}|[A-I])\.?\s+(.*)$")
+
+
+def use_book(book_id: str) -> None:
+    global BOOK_ID, BOOK, BOOK_TITLE, BOOK_DIR, UNITS_PATH
+    if book_id not in BOOKS:
+        raise SystemExit(f"unknown book {book_id!r}; known: {', '.join(BOOKS)}")
+    BOOK_ID, BOOK = book_id, BOOKS[book_id]
+    BOOK_TITLE = BOOK["title"]
+    BOOK_DIR = config.OUTPUT_DIR / BOOK_ID
+    UNITS_PATH = config.PROJECT_ROOT / "src" / f"{BOOK_ID}_units.json"
+
+
+def book_chapters() -> list[dict]:
+    if BOOK["chapters"] == "scan":
+        return scan_chapters(str(BOOK["pdf"]))
+    return contents_chapters()
+
+
+def _squash(s: str) -> str:
+    """Letters/digits only, lowercased: OCR splits words ("a nd La nguages")."""
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def contents_chapters() -> list[dict]:
+    """Chapters from the book's Contents list (printed pages + page_offset),
+    each verified against its opener page's text. Body ends before the
+    "References" heading: if that heading sits partway down a page, the page
+    stays in the body and `body_stop` tells render_unit to trim there."""
+    off = BOOK["page_offset"]
+    doc = fitz.open(str(BOOK["pdf"]))
+    try:
+        entries = BOOK["chapters"]
+        out = []
+        for i, (num, title, printed) in enumerate(entries):
+            start = printed + off
+            end = (entries[i + 1][2] + off - 1) if i + 1 < len(entries) else BOOK["last_page"]
+            head = _squash(" ".join(_lines(doc[start - 1], 6)))
+            verified = _squash(title) in head
+            if not verified:
+                print(f"  WARNING: ch{num} {title!r}: title not found on PDF p{start} "
+                      f"(printed {printed}) -- check page_offset", file=sys.stderr)
+            body_end, body_stop = end, None
+            for p in range(start + 1, end + 1):
+                # Case-insensitive: the section heading is "REFERENCES" while
+                # the next page's running header is "References".
+                lines = [l.casefold() for l in _lines(doc[p - 1], 80)]
+                if "references" in lines:
+                    if lines.index("references") <= 2:
+                        body_end = p - 1
+                    else:
+                        body_end, body_stop = p, "REFERENCES"
+                    break
+            out.append({
+                "id": f"ch{int(num):02d}", "num": num, "title": title, "part": "Chapters",
+                "pdf_start": start, "pdf_end": end, "body_end": body_end,
+                **({"body_stop": body_stop} if body_stop else {}),
+                "verified": verified,
+            })
+        return out
+    finally:
+        doc.close()
 
 
 def _lines(page: fitz.Page, n: int = 4) -> list[str]:
@@ -130,9 +195,6 @@ def _chapter_dir(ch: dict) -> Path:
     return BOOK_DIR / ch["id"]
 
 
-UNITS_PATH = config.PROJECT_ROOT / "src" / f"{BOOK_ID}_units.json"
-
-
 def load_units() -> list[dict]:
     if not UNITS_PATH.exists():
         return []
@@ -172,7 +234,8 @@ def write_catalog(chapters: list[dict]) -> Path:
                 "body_end": src.get("page_end", ch["body_end"]),
                 "rendered": _is_rendered(d),
             })
-    out.write_text(json.dumps({"id": BOOK_ID, "title": BOOK_TITLE, "chapters": entries},
+    out.write_text(json.dumps({"id": BOOK_ID, "title": BOOK_TITLE, "page_offset": BOOK["page_offset"],
+                               "chapters": entries},
                               ensure_ascii=False, indent=2), encoding="utf-8")
     return out
 
@@ -201,7 +264,8 @@ def heading_page(pdf_path: str, heading: str, lo: int, hi: int) -> int:
         for p in range(lo, hi + 1):
             lines = [_norm(l) for l in doc[p - 1].get_text().splitlines() if l.strip()]
             for i, l in enumerate(lines):
-                if l == want or (i + 1 < len(lines) and f"{l} {lines[i + 1]}" == want):
+                if (l == want or (i + 1 < len(lines) and f"{l} {lines[i + 1]}" == want)
+                        or _garbled_number(l, want)):
                     hits.add(p)
     finally:
         doc.close()
@@ -210,30 +274,187 @@ def heading_page(pdf_path: str, heading: str, lo: int, hi: int) -> int:
     return hits.pop()
 
 
+def _garbled_number(text: str, want: str) -> bool:
+    """`text` is `want` behind one short junk token -- an OCR-mangled section
+    number ("liij pushdown automata" for "3.3 PUSHDOWN AUTOMATA"), with `want`
+    given bare ("PUSHDOWN AUTOMATA"). A token ending in ":" is a running
+    header ("3.3: Pushdown Automata"), not the heading itself."""
+    return bool(re.fullmatch(r"[^\s:]{1,6} " + re.escape(want), text))
+
+
 def _chunk_matches(unit: dict, heading: str) -> bool:
     text, want = _norm(unit["text"]), _norm(heading)
     bare = re.sub(r"^[\d.]+\s+", "", want)  # "28.3 building a lock" -> "building a lock"
-    return text.startswith(want) or (unit["category"] == "title" and text.startswith(bare))
+    return (text.startswith(want)
+            or (unit["category"] == "title" and (text.startswith(bare) or _garbled_number(text, want))))
 
 
-def trim_sequence(path: Path, start: str | None, stop: str | None) -> tuple[int, int]:
+def _line_positions(pdf_path: str, p0: int, p1: int) -> list[tuple[int, float, str]]:
+    """(page, y, whitespace-normalised text) for every text line in p0..p1."""
+    out = []
+    doc = fitz.open(pdf_path)
+    try:
+        for p in range(p0, p1 + 1):
+            for b in doc[p - 1].get_text("dict")["blocks"]:
+                for l in b.get("lines", []):
+                    t = re.sub(r"\s+", " ", " ".join(sp["text"] for sp in l["spans"])).strip()
+                    if t:
+                        out.append((p, l["bbox"][1], t))
+    finally:
+        doc.close()
+    return out
+
+
+def _is_heading_line(line: str, heading: str) -> bool:
+    """`line` is the section heading `heading` as printed (case-sensitive:
+    headings here are ALL CAPS), optionally behind a section number or its
+    OCR-garbled stand-in -- but not a running header, which repeats the
+    title as "2.2: Nondeterministic Finite Automata"."""
+    if not line.endswith(heading):
+        return False
+    prefix = line[: len(line) - len(heading)].strip()
+    return len(prefix) <= 6 and ":" not in prefix
+
+
+def skip_sections(path: Path, pdf_path: str, p0: int, p1: int,
+                  start_prefix: str, until_headings: list[str]) -> int:
+    """Drop end-of-section exercise lists by *page position*: every chunk
+    whose top edge lies between a line starting with `start_prefix` ("Problems
+    for Section 2.1") and the next section heading (one of `until_headings`,
+    allowing an OCR-garbled section number in front). Position-based because
+    layout detection on scans sometimes merges a heading into the exercise
+    block above it, so no chunk *starts* with the heading -- a text-based
+    skip then runs straight through the next section."""
+    lines = _line_positions(pdf_path, p0, p1)
+    marks = [(pg, y) for pg, y, t in lines if t.startswith(start_prefix)]
+    heads = [(pg, y) for pg, y, t in lines if any(_is_heading_line(t, h) for h in until_headings)]
+    spans = []
+    for m in marks:
+        nxt = min((h for h in heads if h > m), default=(p1 + 1, 0.0))
+        # End a little above the heading's text line: on scans the layout box
+        # of the heading itself can sit a few points higher than its OCR text.
+        spans.append((m, (nxt[0], nxt[1] - 15.0)))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    keep = [u for u in data["reading_sequence"]
+            if not any(a <= (u["page"], u["bbox"][1]) < b for a, b in spans)]
+    dropped = len(data["reading_sequence"]) - len(keep)
+    data["reading_sequence"] = keep
+    data["source"].setdefault("trim", {})["skip"] = {
+        "from": start_prefix, "spans": [[list(a), list(b)] for a, b in spans], "dropped": dropped}
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return dropped
+
+
+def _iou(a: list[float], b: list[float]) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _heading_core(text: str) -> str:
+    """Heading text without its leading section number (or the OCR's garbled
+    stand-in for one, which precedes an ALL-CAPS heading): "2.3 FINITE
+    AUTOMATA" / "liiJ FINITE AUTOMATA" -> "finiteautomata". A short ordinary
+    word ("The Abstraction") is left alone."""
+    t = text.strip()
+    m = re.match(r"(\d+(?:\.\d+)*|\S{1,4})[:.]?\s+(.*)$", t)
+    if m and (m.group(1)[0].isdigit() or m.group(2)[:3].isupper()):
+        t = m.group(2)
+    return _squash(t)
+
+
+def clean_sequence(path: Path, drop_patterns: list[str], keep_empty: bool = False) -> int:
+    """Drop (a) a chunk whose region duplicates an earlier one on the same
+    page (layout detection sometimes emits the same box twice, e.g. as text
+    *and* title -- it would be read twice), and (b) chunks that are only a
+    running header / page number (book-specific `drop_patterns`), and (c)
+    chunks with no extracted text -- unless `keep_empty` (scanned books: the
+    vision rewrite reads them straight off the image, e.g. a section heading
+    whose OCR text is misaligned)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    keep: list[dict] = []
+    for u in data["reading_sequence"]:
+        t = u["text"].strip()
+        if not t and not keep_empty:
+            continue
+        if any(re.match(pat, t) for pat in drop_patterns):
+            continue
+        if any(k["page"] == u["page"] and _iou(k["bbox"], u["bbox"]) > 0.8 for k in keep):
+            continue
+        # The same heading boxed twice, with and without its number
+        # ("2.3 FINITE AUTOMATA ..." then "FINITE AUTOMATA ..."): keep the
+        # fuller one.
+        prev = keep[-1] if keep else None
+        if (prev and u["category"] == "title" and prev["category"] == "title" and prev["page"] == u["page"]
+                and _squash(t) and _squash(prev["text"])):
+            # Equal once the leading section number is stripped -- not mere
+            # containment, or the chapter title "Finite Automata" would be
+            # swallowed by "2.1 Deterministic Finite Automata".
+            a_, b_ = _heading_core(prev["text"]), _heading_core(t)
+            if a_ == b_:
+                if len(_squash(t)) > len(_squash(prev["text"])):
+                    keep[-1] = u  # keep the copy that carries the number
+                continue
+        keep.append(u)
+    dropped = len(data["reading_sequence"]) - len(keep)
+    data["reading_sequence"] = keep
+    data["source"]["cleaned"] = dropped
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return dropped
+
+
+def _heading_pos(pdf_path: str, heading: str, p0: int, p1: int) -> tuple[int, float]:
+    """(page, y) of `heading` as its own text line (garbled section number
+    tolerated); exactly one match required."""
+    want = _norm(heading)
+    hits = [(pg, y) for pg, y, t in _line_positions(pdf_path, p0, p1)
+            if _norm(t) == want or _garbled_number(_norm(t), want)]
+    if len(hits) != 1:
+        raise RuntimeError(f"heading {heading!r}: {len(hits)} text-layer matches in PDF {p0}-{p1}; need one")
+    return hits[0]
+
+
+def _first_at_or_after(seq: list[dict], pos: tuple[int, float], tol: float = 15.0) -> int:
+    """Index of the first chunk at or below page position `pos` (with a little
+    tolerance: on scans the OCR text layer can sit a few points off the image
+    the layout boxes were drawn on)."""
+    return next((i for i, u in enumerate(seq) if (u["page"], u["bbox"][1] + tol) >= pos), len(seq))
+
+
+def trim_sequence(path: Path, start: str | None, stop: str | None,
+                  pdf_path: str | None = None, p0: int = 0, p1: int = 0) -> tuple[int, int]:
     """Cut reading_sequence.json down to [start heading, stop heading). The
     pipeline runs over whole pages, so this drops the bleed from the
-    neighbouring sections that share the first/last page."""
+    neighbouring sections that share the first/last page.
+
+    Headings are matched against chunk text first. On scanned books a heading
+    chunk can come out with no text at all (the OCR layer is misaligned with
+    the image the layout boxes were drawn on), so if that fails the cut falls
+    back to the heading's position in the PDF text layer."""
     data = json.loads(path.read_text(encoding="utf-8"))
     seq = data["reading_sequence"]
+    how = {}
     i0 = 0
     if start:
         i0 = next((i for i, u in enumerate(seq) if _chunk_matches(u, start)), None)
+        how["start"] = "chunk text"
+        if i0 is None and pdf_path:
+            i0, how["start"] = _first_at_or_after(seq, _heading_pos(pdf_path, start, p0, p1)), "text-layer position"
         if i0 is None:
             raise RuntimeError(f"start heading {start!r} not found among extracted chunks")
     i1 = len(seq)
     if stop:
         i1 = next((i for i, u in enumerate(seq) if i > i0 and _chunk_matches(u, stop)), None)
+        how["stop"] = "chunk text"
+        if i1 is None and pdf_path:
+            i1, how["stop"] = max(i0, _first_at_or_after(seq, _heading_pos(pdf_path, stop, p0, p1))), "text-layer position"
         if i1 is None:
             raise RuntimeError(f"stop heading {stop!r} not found among extracted chunks")
+    data["source"].setdefault("trim", {})["matched_by"] = how
     data["reading_sequence"] = seq[i0:i1]
-    data["source"]["trim"] = {"start": start, "stop": stop}
+    data["source"].setdefault("trim", {}).update({"start": start, "stop": stop})
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return i1 - i0, len(seq) - (i1 - i0)
 
@@ -255,11 +476,13 @@ def render_unit(chapters: list[dict], unit: dict, tts: bool = True, llm: bool = 
     ch = _find(chapters, unit["chapter"])
     uid = unit.get("id") or ch["id"]
     out_dir = BOOK_DIR / uid
-    start, stop = unit.get("start"), unit.get("stop")
+    # A whole chapter whose References heading sits mid-page still trims there.
+    start, stop = unit.get("start"), unit.get("stop") or ch.get("body_stop")
+    skip = unit.get("skip")
     seq_path = out_dir / "reading_sequence.json"
     if _is_rendered(out_dir):
         return "skipped (already rendered)"
-    if out_dir.exists() and not _prepared(seq_path, trimmed=bool(start or stop)):
+    if out_dir.exists() and not _prepared(seq_path, trimmed=bool(start or stop or skip)):
         # Empty dir = claimed by the other machine in a split queue; anything
         # else half-made is left for a human to look at, never overwritten.
         raise RuntimeError(f"{out_dir} exists but isn't a resumable unit -- leaving it alone")
@@ -272,18 +495,32 @@ def render_unit(chapters: list[dict], unit: dict, tts: bool = True, llm: bool = 
         print(f"\n##### {uid}: resuming at TTS (text prep already done) -> {out_dir}")
         note = ", resumed at TTS"
     else:
-        pdf = str(config.PDF_PATH)
+        pdf = str(BOOK["pdf"])
         p0 = heading_page(pdf, start, ch["pdf_start"], ch["body_end"]) if start else ch["pdf_start"]
         p1 = heading_page(pdf, stop, p0, ch["body_end"]) if stop else ch["body_end"]
         print(f"\n##### {uid} ({ch['title']}): PDF pages {p0}-{p1}"
               f"{f', from {start!r}' if start else ''}{f', stop before {stop!r}' if stop else ''} -> {out_dir}")
 
-        pipeline.main([f"{p0}-{p1}", "--out", str(out_dir)] + ([] if llm else ["--no-llm"]))
+        pipeline.main([f"{p0}-{p1}", "--out", str(out_dir), "--pdf", pdf] + ([] if llm else ["--no-llm"]))
         note = ""
         if start or stop:
-            kept, dropped = trim_sequence(seq_path, start, stop)
+            kept, dropped = trim_sequence(seq_path, start, stop, pdf, p0, p1)
             note = f", trimmed to {kept} chunks ({dropped} bleed chunks dropped)"
+        if skip:
+            n = skip_sections(seq_path, pdf, p0, p1, skip["from"], skip["until_headings"])
+            note += f", {n} chunks of {skip['from']!r} skipped"
+        n = clean_sequence(seq_path, BOOK.get("drop_patterns", []), keep_empty=bool(BOOK.get("speakable")))
+        if n:
+            note += f", {n} duplicate/header chunks dropped"
+        if BOOK.get("speakable"):
+            from .speakable import make_speakable
+            # Rewrites from an earlier, superseded run of this unit are reused
+            # (matched by page + region) instead of asking the model again.
+            make_speakable(seq_path, pdf, cache=sorted((BOOK_DIR / "_superseded").glob(f"{uid}-*/reading_sequence.json")),
+                           glossary=BOOK.get("speakable_glossary", ""))
+            note += ", speakable rewrite"
         data = json.loads(seq_path.read_text(encoding="utf-8"))
+        data["source"]["page_offset"] = BOOK["page_offset"]
         # Chapter-relative page numbers in the web header count from the
         # chapter opener, not from wherever a partial unit starts. Written
         # last: its presence marks the text prep as complete (see _prepared).
@@ -314,8 +551,8 @@ def print_status(log: Path | None) -> None:
             chunks = json.loads((d / "manifest.json").read_text(encoding="utf-8"))["chunks"]
             state, done = f"done      {chunks[-1]['t1'] / 60:5.1f} min", done + 1
         elif (d / "reading_sequence.json").exists():
-            state = "in progress (TTS)" if _prepared(d / "reading_sequence.json", bool(u.get("start") or u.get("stop"))) \
-                else "in progress (text)"
+            src = json.loads((d / "reading_sequence.json").read_text(encoding="utf-8"))["source"]
+            state = "in progress (TTS)" if "chapter_start" in src else "in progress (text)"
         elif d.exists():
             state = "in progress (text)"
         else:
@@ -356,6 +593,7 @@ def main(argv: list[str] | None = None) -> int:
         except (AttributeError, ValueError):
             pass
     parser = argparse.ArgumentParser(prog="python -m src.chapters")
+    parser.add_argument("--book", default="ostep", help=f"one of: {', '.join(BOOKS)} (see src/books.py)")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("scan", help="detect chapters and write catalog.json")
     r = sub.add_parser("render", help="run pipeline (+TTS) for chapters, e.g. 16 18")
@@ -371,11 +609,12 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("status", help="show render-queue progress (read-only)")
     s.add_argument("--log", default=None, help="queue log to read the current passage counter from")
     args = parser.parse_args(argv)
+    use_book(args.book)
 
     if args.cmd == "status":
         print_status(Path(args.log) if args.log else None)
         return 0
-    chapters = scan_chapters(str(config.PDF_PATH))
+    chapters = book_chapters()
     if args.cmd == "scan":
         for ch in chapters:
             flag = "" if ch["verified"] else "  (outline fallback)"

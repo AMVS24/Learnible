@@ -1,0 +1,32 @@
+{
+  "_comment": "Render queue for `python -m src.chapters --book toc queue`. Same format as ostep_units.json, plus `skip`: drop each end-of-section exercise list, by page position, from the 'Problems for Section ...' line to the next of `until_headings` (section headings as printed; an OCR-garbled section number in front is tolerated). Page numbers: PDF = printed + 14 (src/books.py).",
+  "units": [
+    {
+      "chapter": "2",
+      "skip": {
+        "from": "Problems for Section",
+        "until_headings": [
+          "NONDETERMINISTIC FINITE AUTOMATA",
+          "FINITE AUTOMATA AND REGULAR EXPRESSIONS",
+          "LANGUAGES THAT ARE AND ARE NOT REGULAR",
+          "STATE MINIMIZATION",
+          "ALGORITHMS FOR FINITE AUTOMATA",
+          "REFERENCES"
+        ]
+      }
+    },
+    {
+      "chapter": "3",
+      "id": "ch03-s1-2",
+      "title": "Context-Free Languages: §3.1–3.2 (partial)",
+      "stop": "PUSHDOWN AUTOMATA",
+      "skip": {
+        "from": "Problems for Section",
+        "until_headings": [
+          "PARSE TREES",
+          "PUSHDOWN AUTOMATA"
+        ]
+      }
+    }
+  ]
+}

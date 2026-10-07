@@ -159,7 +159,9 @@ def build_script(units: list[dict]) -> list[str]:
         refs = u["figure_refs"]
         new = [r for r in refs if r not in active]
         active = set(refs)
-        text = u["text"].strip()
+        # `spoken`: the vision-model rewrite for scanned, notation-heavy books
+        # (src/speakable.py); otherwise the extracted text.
+        text = (u.get("spoken") or u["text"]).strip()
         if new:
             text = _figure_cue(new) + " " + text
         # After the cue is prepended: its "Figure 18.2" needs normalising too.
@@ -236,7 +238,9 @@ def main(argv: list[str] | None = None) -> int:
     durations: list[float] = []
     total_s = 0.0
     for i, text in enumerate(script):
-        wav = synth(model, text).cpu()
+        # Nothing to say (e.g. a heading the vision rewrite couldn't read):
+        # keep the unit in the timeline as a sliver of silence.
+        wav = synth(model, text).cpu() if text.strip() else torch.zeros(1, int(0.05 * sr))
         dur = wav.shape[-1] / sr
         durations.append(dur)
         pieces.append(wav)

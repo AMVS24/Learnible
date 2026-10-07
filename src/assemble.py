@@ -35,7 +35,9 @@ FIGURE_CLASSES = {"figure", "table"}
 DROP_CLASSES = {"abandon", "table_footnote", "isolate_formula", "formula_caption"}
 
 # --- text probes -------------------------------------------------------------
-_LABEL_RE = re.compile(r"\b(figure|fig\.?|table)\s+(\d+(?:\.\d+)*)", re.I)
+# "Figure 4.5" (OSTEP) or "Figure 2-1" (Lewis & Papadimitriou). The "-"
+# form is canonicalised to "." so a caption and a mention always agree.
+_LABEL_RE = re.compile(r"\b(figure|fig\.?|table)\s+(\d+(?:[.-]\d+)*)", re.I)
 
 # spoken body for an un-captioned inline code sample (kept in reading order)
 CODE_PLACEHOLDER = "Refer to the code segment here."
@@ -50,7 +52,7 @@ _CALLOUT_MERGE_GAP = 30.0
 
 def _canonical(match: "re.Match") -> str:
     kind = "Table" if match.group(1).lower().startswith("tab") else "Figure"
-    return f"{kind} {match.group(2)}"
+    return f"{kind} {match.group(2).replace('-', '.')}"
 
 
 def parse_label(text: str) -> str | None:
