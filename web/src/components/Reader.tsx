@@ -7,6 +7,7 @@ import OnTheGoView from "./OnTheGoView";
 import PlayerBar from "./PlayerBar";
 import ScrubWheel from "./ScrubWheel";
 import ScrollView from "./ScrollView";
+import { progress, type ReaderMode } from "@/lib/progress";
 
 // Latest chunk with t0 <= t (binary search -- chunks are in t0 order because
 // build_manifest lays them out sequentially). Ported from the recovered
@@ -25,10 +26,14 @@ export default function Reader({
   manifest,
   base,
   title,
+  bookId,
+  chapterId,
 }: {
   manifest: Manifest;
   base: string; // chapter data dir, e.g. "/data/ostep/ch16"
   title: string;
+  bookId: string;    // for remembering where you left off (lib/progress.ts)
+  chapterId: string;
 }) {
   const { chunks, figures, pages } = manifest;
 
@@ -44,7 +49,8 @@ export default function Reader({
 
   // reading: one page at a time; scroll: all pages stacked, click a chunk
   // to read it; onTheGo: just the active figure.
-  const [mode, setMode] = useState<"reading" | "scroll" | "onTheGo">("reading");
+  const [mode, setModeState] = useState<ReaderMode>("reading");
+  const setMode = (m: ReaderMode) => { setModeState(m); progress.saveMode(m); };
   // Bumped by explicit navigation so scroll mode starts following again.
   const [recenterKey, setRecenterKey] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -84,11 +90,66 @@ export default function Reader({
     return () => cancel(id);
   }, [base, pages, narratedPages, displayPage]);
 
+  // --- where you left off ----------------------------------------------------
+  // Saved (throttled) as you listen, and on pause / seek / leaving the page;
+  // restored once on open -- cued, not auto-played. `restored` guards against
+  // the audio's initial t=0 updates overwriting the saved spot before it's
+  // been applied.
+  const restored = useRef(false);
+  const lastSave = useRef(0);
+  const save = (t: number, force = false) => {
+    if (!restored.current) return;
+    const now = Date.now();
+    if (!force && now - lastSave.current < 2000) return;
+    lastSave.current = now;
+    progress.save(bookId, chapterId, title, t);
+  };
+
   const handleTimeUpdate = (t: number) => {
     setCurrentTime(t);
     const c = chunkAt(chunks, t);
     if (c && c.page !== displayPage) setDisplayPage(c.page);
+    save(t);
   };
+
+  useEffect(() => {
+    const m = progress.mode();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a stored preference after hydration
+    if (m) setModeState(m);
+    const a = audioRef.current;
+    const pos = progress.chapter(bookId, chapterId);
+    if (!a || !pos || pos.t < 1) { restored.current = true; return; }
+    const apply = () => {
+      const t = Math.min(pos.t, (a.duration || pos.t) - 0.5);
+      a.currentTime = t;
+      setCurrentTime(t);
+      const c = chunkAt(chunks, t);
+      if (c) setDisplayPage(c.page);
+      setRecenterKey((k) => k + 1);
+      restored.current = true;
+    };
+    if (a.readyState >= 1) apply();
+    else a.addEventListener("loadedmetadata", apply, { once: true });
+    return () => a.removeEventListener("loadedmetadata", apply);
+  }, [bookId, chapterId, chunks]);
+
+  // Save immediately on pause / seek, and when leaving or hiding the page.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const now = () => save(a.currentTime, true);
+    const onHide = () => { if (document.visibilityState === "hidden") now(); };
+    a.addEventListener("pause", now);
+    a.addEventListener("seeked", now);
+    window.addEventListener("pagehide", now);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      a.removeEventListener("pause", now);
+      a.removeEventListener("seeked", now);
+      window.removeEventListener("pagehide", now);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  });
 
   // Seek somewhere on purpose (skip, scrub, click): scroll mode re-follows.
   const jumpTo = (t: number, play = false) => {

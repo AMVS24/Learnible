@@ -25,6 +25,8 @@ export default async function ChapterPage({ params }: PageProps<"/[book]/[chapte
       manifest={manifest}
       base={chapterBase(bookId, chapterId)}
       title={`${chapter.num}. ${chapter.title}`}
+      bookId={bookId}
+      chapterId={chapterId}
     />
   );
 }
