@@ -6,6 +6,7 @@ import PageView from "./PageView";
 import OnTheGoView from "./OnTheGoView";
 import PlayerBar from "./PlayerBar";
 import ScrubWheel from "./ScrubWheel";
+import ScrollView from "./ScrollView";
 
 // Latest chunk with t0 <= t (binary search -- chunks are in t0 order because
 // build_manifest lays them out sequentially). Ported from the recovered
@@ -41,7 +42,11 @@ export default function Reader({
     return m;
   }, [figures]);
 
-  const [mode, setMode] = useState<"reading" | "onTheGo">("reading");
+  // reading: one page at a time; scroll: all pages stacked, click a chunk
+  // to read it; onTheGo: just the active figure.
+  const [mode, setMode] = useState<"reading" | "scroll" | "onTheGo">("reading");
+  // Bumped by explicit navigation so scroll mode starts following again.
+  const [recenterKey, setRecenterKey] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   // While the scrub wheel is open, the page/highlight follow its preview
   // position instead of the (paused) audio.
@@ -85,6 +90,16 @@ export default function Reader({
     if (c && c.page !== displayPage) setDisplayPage(c.page);
   };
 
+  // Seek somewhere on purpose (skip, scrub, click): scroll mode re-follows.
+  const jumpTo = (t: number, play = false) => {
+    const a = audioRef.current;
+    if (!a) return;
+    a.currentTime = t;
+    handleTimeUpdate(t);
+    setRecenterKey((k) => k + 1);
+    if (play) void a.play();
+  };
+
   // Jump to the next/previous page that actually has narrated content, not
   // just displayPage +/- 1 -- a page with no chunks (pure figure/table) is
   // skipped over, matching the original app's `skipPage`.
@@ -95,10 +110,7 @@ export default function Reader({
       : narratedPages[idx + dir];
     if (target == null) return;
     const first = chunks.find((c) => c.page === target);
-    if (first && audioRef.current) {
-      audioRef.current.currentTime = first.t0;
-      handleTimeUpdate(first.t0);
-    }
+    if (first) jumpTo(first.t0);
   };
 
   // Restart the current chunk if we're >2s into it; otherwise go to the
@@ -119,10 +131,7 @@ export default function Reader({
       else if (i > 0) target = chunks[i - 1].t0;
       else if (cur) target = cur.t0;
     }
-    if (target != null) {
-      audioRef.current.currentTime = target;
-      handleTimeUpdate(target);
-    }
+    if (target != null) jumpTo(target);
   };
 
   return (
@@ -140,29 +149,34 @@ export default function Reader({
             {narratedPages.indexOf(displayPage) + 1} / {narratedPages.length}
           </p>
         </div>
-        <div className="flex gap-1 rounded-lg bg-neutral-900 p-1">
-          <button
-            onClick={() => setMode("reading")}
-            className={`rounded-md px-3 py-1.5 text-sm transition ${
-              mode === "reading" ? "bg-neutral-700 text-white" : "text-neutral-400 hover:text-neutral-200"
-            }`}
-          >
-            Reading
-          </button>
-          <button
-            onClick={() => setMode("onTheGo")}
-            className={`rounded-md px-3 py-1.5 text-sm transition ${
-              mode === "onTheGo" ? "bg-neutral-700 text-white" : "text-neutral-400 hover:text-neutral-200"
-            }`}
-          >
-            On the go
-          </button>
+        <div className="flex shrink-0 gap-1 rounded-lg bg-neutral-900 p-1">
+          {([["reading", "Reading"], ["scroll", "Scroll"], ["onTheGo", "On the go"]] as const).map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); if (m === "scroll") setRecenterKey((k) => k + 1); }}
+              className={`rounded-md px-2.5 py-1.5 text-sm transition sm:px-3 ${
+                mode === m ? "bg-neutral-700 text-white" : "text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </header>
 
       <main className="flex-1 overflow-hidden">
         {mode === "reading" ? (
           <PageView base={base} pageInfo={pages[displayPage]} chunk={highlightChunk} />
+        ) : mode === "scroll" ? (
+          <ScrollView
+            base={base}
+            pages={pages}
+            chunks={chunks}
+            active={active}
+            highlight={highlightChunk}
+            recenterKey={recenterKey}
+            onPick={(c) => jumpTo(c.t0, true)}
+          />
         ) : (
           <OnTheGoView base={base} figures={activeFigures} pages={pages} page={displayPage} />
         )}
@@ -185,13 +199,7 @@ export default function Reader({
               const c = t == null ? null : chunkAt(chunks, t);
               if (c && c.page !== displayPage) setDisplayPage(c.page);
             }}
-            onCommit={(t) => {
-              const a = audioRef.current;
-              if (!a) return;
-              a.currentTime = t;
-              handleTimeUpdate(t);
-              a.play();
-            }}
+            onCommit={(t) => jumpTo(t, true)}
           />
         }
       />
