@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { loadLibrary, narrationSeconds } from "@/lib/data";
 import BookContents from "@/components/BookContents";
 import { ModeToggle } from "@/components/mode";
+import ContinueCard from "@/components/ContinueCard";
 
 export const dynamicParams = false;
 
@@ -32,6 +33,9 @@ export default async function BookPage({ params }: PageProps<"/[book]">) {
             {narrated.length} narrated {narrated.length === 1 ? "unit" : "units"}. Pick one to start listening.
           </p>
           <ModeToggle className="w-44" />
+        </div>
+        <div className="mt-5">
+          <ContinueCard books={[{ id: book.id, title: book.title }]} />
         </div>
         <div className="mt-6 pb-8">
           <BookContents book={book} variant="page" minutes={minutes} />

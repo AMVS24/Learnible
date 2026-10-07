@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { loadLibrary, narrationSeconds } from "@/lib/data";
+import ContinueCard from "@/components/ContinueCard";
 
 function formatDuration(s: number): string {
   const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
@@ -28,6 +29,8 @@ export default async function Home() {
           <h1 className="text-3xl font-semibold text-neutral-100">Learnible</h1>
           <p className="mt-2 text-sm text-neutral-400">Textbooks, read aloud with the page and figures in sync.</p>
         </div>
+
+        <ContinueCard books={books.map((b) => ({ id: b.id, title: b.title }))} />
 
         <div className="w-full">
           <p className="mb-3 text-left text-[11px] font-medium uppercase tracking-wide text-neutral-500">
