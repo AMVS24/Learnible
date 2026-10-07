@@ -52,6 +52,7 @@ export default function PlayerBar({
   onNextPage,
   onPrevChunk,
   onNextChunk,
+  scrub,
 }: {
   audioRef: RefObject<HTMLAudioElement | null>;
   audioSrc: string;
@@ -60,6 +61,7 @@ export default function PlayerBar({
   onNextPage: () => void;
   onPrevChunk: () => void;
   onNextChunk: () => void;
+  scrub?: ReactNode; // the press-and-hold scrub gizmo (ScrubWheel), next to the transport
 }) {
   const [playing, setPlaying] = useState(false);
 
@@ -70,7 +72,7 @@ export default function PlayerBar({
   };
 
   return (
-    <footer className="border-t border-neutral-800 bg-neutral-900/60 px-4 py-3">
+    <footer className="relative border-t border-neutral-800 bg-neutral-900/60 px-4 py-3">
       <audio
         ref={audioRef}
         src={audioSrc}
@@ -107,6 +109,7 @@ export default function PlayerBar({
           <button onClick={onNextPage} title="Next page" aria-label="Next page" className={btn}>
             <NextPageIcon />
           </button>
+          {scrub && <div className="ml-1 border-l border-neutral-800 pl-1.5">{scrub}</div>}
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
