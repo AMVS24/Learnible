@@ -64,9 +64,16 @@ export default function ScrollView({
   // Available width for the column, and the zoom (null until restored).
   const [innerW, setInnerW] = useState(0);
   const [zoom, setZoomState] = useState<Zoom | null>(null);
-  // Point to keep fixed across a zoom (content px + its viewport position),
-  // applied right after the re-layout.
-  const anchor = useRef<{ x: number; y: number; vx: number; vy: number; ratio: number } | null>(null);
+  // The spot to keep still across a zoom, like a browser PDF viewer: which
+  // page is under the cursor (or the view's centre), the fraction across /
+  // down that page, and where it sits in the viewport. Re-applied after the
+  // re-layout. (Scaling the scroll offset alone drifts: the padding, the gaps
+  // between pages and the centring offset don't scale with the pages.)
+  const anchor = useRef<{ page: number; fx: number; fy: number; vx: number; vy: number } | null>(null);
+  const pageEls = useRef(new Map<number, HTMLElement>());
+  // Set while a zoom is in flight, so the follow-along doesn't then jump the
+  // view to the narration and undo the anchoring.
+  const userZoomed = useRef(false);
   // So long-lived listeners (wheel, keys) always zoom from the current scale.
   const zoomRef = useRef<((factor: number | "fit", vx?: number, vy?: number) => void) | null>(null);
 
@@ -101,7 +108,21 @@ export default function ScrollView({
     if (!sc || scale == null) return;
     const target = next === "fit" ? fitScale : clampScale(next);
     const px = vx ?? sc.clientWidth / 2, py = vy ?? sc.clientHeight / 2;
-    anchor.current = { x: sc.scrollLeft + px, y: sc.scrollTop + py, vx: px, vy: py, ratio: target / scale };
+    // The page under that point (or the nearest one vertically).
+    const v = sc.getBoundingClientRect();
+    const cy = v.top + py;
+    let best: { page: number; r: DOMRect } | null = null, bestD = Infinity;
+    for (const [page, el] of pageEls.current) {
+      const r = el.getBoundingClientRect();
+      const d = cy < r.top ? r.top - cy : cy > r.bottom ? cy - r.bottom : 0;
+      if (d < bestD) { best = { page, r }; bestD = d; }
+      if (d === 0) break;
+    }
+    if (best) {
+      const { page, r } = best;
+      anchor.current = { page, fx: (v.left + px - r.left) / r.width, fy: (cy - r.top) / r.height, vx: px, vy: py };
+    }
+    userZoomed.current = true;
     setZoom(next === "fit" ? "fit" : target);
   }, [scale, fitScale, setZoom]);
 
@@ -109,8 +130,12 @@ export default function ScrollView({
     const sc = scroller.current, a = anchor.current;
     if (!sc || !a) return;
     anchor.current = null;
-    sc.scrollLeft = a.x * a.ratio - a.vx;
-    sc.scrollTop = a.y * a.ratio - a.vy;
+    const el = pageEls.current.get(a.page);
+    if (!el) return;
+    // Put the same spot of the same page back under the same viewport point.
+    const v = sc.getBoundingClientRect(), r = el.getBoundingClientRect();
+    sc.scrollLeft += r.left + a.fx * r.width - (v.left + a.vx);
+    sc.scrollTop += r.top + a.fy * r.height - (v.top + a.vy);
   }, [scale]);
 
   useEffect(() => {
@@ -225,9 +250,12 @@ export default function ScrollView({
     };
   }, [measure]);
 
-  // After a zoom, keep following the narration if we were.
+  // When the scale changes on its own (fit-width tracking a window resize),
+  // keep following the narration; after a deliberate zoom, leave the
+  // anchored view alone.
   useEffect(() => {
-    if (follow) bringIntoView(false);
+    if (follow && !userZoomed.current) bringIntoView(false);
+    userZoomed.current = false;
     measure();
   }, [scale]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -263,7 +291,12 @@ export default function ScrollView({
           {pageNums.map((p) => {
             const info = pages[p];
             return (
-              <div key={p} className="relative shrink-0" style={{ width: scale ? info.width * PT_TO_PX * scale : "100%" }}>
+              <div
+                key={p}
+                ref={(el) => { if (el) pageEls.current.set(p, el); else pageEls.current.delete(p); }}
+                className="relative shrink-0"
+                style={{ width: scale ? info.width * PT_TO_PX * scale : "100%" }}
+              >
                 <div
                   className="relative w-full overflow-hidden rounded-sm bg-neutral-800 shadow-2xl"
                   style={{ aspectRatio: `${info.width} / ${info.height}` }}
