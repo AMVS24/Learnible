@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode, type RefObject } from "react";
+import { useRef, useState, type ReactNode, type RefObject } from "react";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 
@@ -67,6 +67,27 @@ export default function PlayerBar({
 }) {
   const [playing, setPlaying] = useState(false);
 
+  // Hosted audio (GitHub Releases) is served through a short-lived signed
+  // link. If it expires -- e.g. paused for over an hour, then a seek -- or the
+  // network drops, the element errors: reload the source (which fetches a
+  // fresh link) and put playback back where it was. Capped so a genuinely
+  // missing file doesn't loop.
+  const recover = useRef({ t: 0, wasPlaying: false, tries: 0, last: 0 });
+  const onAudioError = (a: HTMLAudioElement) => {
+    const r = recover.current;
+    const now = Date.now();
+    if (now - r.last > 60_000) r.tries = 0;
+    if (r.tries >= 3) return;
+    r.tries++;
+    r.last = now;
+    const resumeAt = r.t, resume = r.wasPlaying;
+    a.addEventListener("loadedmetadata", () => {
+      a.currentTime = resumeAt;
+      if (resume) void a.play();
+    }, { once: true });
+    a.load();
+  };
+
   const togglePlay = () => {
     const a = audioRef.current;
     if (!a) return;
@@ -90,7 +111,13 @@ export default function PlayerBar({
         // While a seek is still fetching audio, ignore time updates (the
         // skip handlers already moved the page/highlight to the target), and
         // re-sync once the seek lands.
-        onTimeUpdate={(e) => { if (!e.currentTarget.seeking) onTimeUpdate(e.currentTarget.currentTime); }}
+        onTimeUpdate={(e) => {
+          const a = e.currentTarget;
+          recover.current.t = a.currentTime;
+          recover.current.wasPlaying = !a.paused;
+          if (!a.seeking) onTimeUpdate(a.currentTime);
+        }}
+        onError={(e) => onAudioError(e.currentTarget)}
         onSeeked={(e) => onTimeUpdate(e.currentTarget.currentTime)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}

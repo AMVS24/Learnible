@@ -353,7 +353,8 @@ export default function Reader({
       <PlayerBar
         translucent={overlay}
         audioRef={audioRef}
-        audioSrc={`${base}/${manifest.audio}`}
+        // An absolute URL (MP3s hosted on a GitHub Release) or a file next to the manifest.
+        audioSrc={/^https?:\/\//.test(manifest.audio) ? manifest.audio : `${base}/${manifest.audio}`}
         onTimeUpdate={handleTimeUpdate}
         onPrevPage={() => skipPage(-1)}
         onNextPage={() => skipPage(1)}

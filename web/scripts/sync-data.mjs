@@ -32,9 +32,14 @@ async function exists(p) {
 // image has loaded). Conversion happens only here, on the synced copy --
 // output/ keeps the PNGs -- and the copied manifest is pointed at the .webp
 // files. Skipped when the .webp is already newer than its PNG.
-async function syncChapter(src, dest) {
+// Audio: if audio-host.json exists the MP3s live on a GitHub Release
+// (uploaded by `npm run upload-audio`) and the manifest points there;
+// otherwise they're copied in and served by Vercel as before.
+const audioHost = await readFile(path.join(webRoot, "audio-host.json"), "utf-8").then(JSON.parse, () => null);
+
+async function syncChapter(src, dest, bookId, chapterId) {
   await mkdir(path.join(dest, "pages"), { recursive: true });
-  await cp(path.join(src, "narration.mp3"), path.join(dest, "narration.mp3"));
+  if (!audioHost) await cp(path.join(src, "narration.mp3"), path.join(dest, "narration.mp3"));
   for (const f of await readdir(path.join(src, "pages"))) {
     if (!f.endsWith(".png")) continue;
     const from = path.join(src, "pages", f);
@@ -44,6 +49,9 @@ async function syncChapter(src, dest) {
   }
   const manifest = JSON.parse(await readFile(path.join(src, "manifest.json"), "utf-8"));
   for (const page of Object.values(manifest.pages)) page.image = page.image.replace(/\.png$/, ".webp");
+  if (audioHost) {
+    manifest.audio = `https://github.com/${audioHost.repo}/releases/download/${audioHost.tag}/${bookId}-${chapterId}.mp3`;
+  }
   await writeFile(path.join(dest, "manifest.json"), JSON.stringify(manifest));
 }
 
@@ -68,7 +76,7 @@ async function main() {
       const present = await Promise.all(CHAPTER_FILES.map((f) => exists(path.join(src, f))));
       ch.rendered = present.every(Boolean);
       if (!ch.rendered) continue;
-      await syncChapter(src, path.join(bookOut, ch.id));
+      await syncChapter(src, path.join(bookOut, ch.id), catalog.id, ch.id);
       console.log(`  synced ${catalog.id}/${ch.id}  ${ch.title}`);
     }
     await writeFile(path.join(bookOut, "catalog.json"), JSON.stringify(catalog, null, 2));

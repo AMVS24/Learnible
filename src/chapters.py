@@ -65,7 +65,55 @@ def use_book(book_id: str) -> None:
 def book_chapters() -> list[dict]:
     if BOOK["chapters"] == "scan":
         return scan_chapters(str(BOOK["pdf"]))
+    if BOOK["chapters"] == "outline":
+        return outline_chapters()
     return contents_chapters()
+
+
+def outline_chapters() -> list[dict]:
+    """One chapter per top-level outline entry; it ends the page before the
+    next one starts."""
+    doc = fitz.open(str(BOOK["pdf"]))
+    try:
+        tops = [(t[1], t[2]) for t in doc.get_toc() if t[0] == 1]
+        out = []
+        for i, (title, start) in enumerate(tops):
+            end = (tops[i + 1][1] - 1) if i + 1 < len(tops) else len(doc)
+            out.append({"id": f"ch{i + 1:02d}", "num": str(i + 1), "title": title, "part": "Chapters",
+                        "pdf_start": start, "pdf_end": end, "body_end": end, "verified": True})
+        return out
+    finally:
+        doc.close()
+
+
+def outline_pos(pdf_path: str, title: str, lo: int, hi: int) -> tuple[int, float]:
+    """(page, y from the top) where the outline entry `title` points, within
+    PDF pages lo..hi. Exactly one match required."""
+    doc = fitz.open(pdf_path)
+    try:
+        hits = []
+        for t in doc.get_toc(simple=False):
+            if t[1].strip() == title and lo <= t[2] <= hi:
+                to = t[3].get("to")
+                h = doc[t[2] - 1].rect.height
+                hits.append((t[2], h - to.y if to is not None else 0.0))  # outline y counts from the bottom
+        if len(hits) != 1:
+            raise RuntimeError(f"outline entry {title!r}: {len(hits)} matches in PDF {lo}-{hi}; need one")
+        return hits[0]
+    finally:
+        doc.close()
+
+
+def trim_by_position(path: Path, start: tuple[int, float] | None, stop: tuple[int, float] | None) -> tuple[int, int]:
+    """Keep chunks from position `start` up to (not including) `stop`."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    seq = data["reading_sequence"]
+    i0 = _first_at_or_after(seq, start) if start else 0
+    i1 = max(i0, _first_at_or_after(seq, stop)) if stop else len(seq)
+    data["reading_sequence"] = seq[i0:i1]
+    data["source"].setdefault("trim", {}).update({"start_pos": start, "stop_pos": stop, "matched_by": "outline"})
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return i1 - i0, len(seq) - (i1 - i0)
 
 
 def _squash(s: str) -> str:
@@ -365,7 +413,8 @@ def _heading_core(text: str) -> str:
     return _squash(t)
 
 
-def clean_sequence(path: Path, drop_patterns: list[str], keep_empty: bool = False) -> int:
+def clean_sequence(path: Path, drop_patterns: list[str], keep_empty: bool = False,
+                   margin_bands: tuple[float, float] | None = None) -> int:
     """Drop (a) a chunk whose region duplicates an earlier one on the same
     page (layout detection sometimes emits the same box twice, e.g. as text
     *and* title -- it would be read twice), and (b) chunks that are only a
@@ -375,8 +424,14 @@ def clean_sequence(path: Path, drop_patterns: list[str], keep_empty: bool = Fals
     whose OCR text is misaligned)."""
     data = json.loads(path.read_text(encoding="utf-8"))
     keep: list[dict] = []
+    pages = data.get("pages", {})
     for u in data["reading_sequence"]:
         t = u["text"].strip()
+        # (d) running headers / footers: entirely inside the page margins
+        if margin_bands and str(u["page"]) in pages:
+            h = pages[str(u["page"])]["height"]
+            if u["bbox"][3] < margin_bands[0] * h or u["bbox"][1] > margin_bands[1] * h:
+                continue
         if not t and not keep_empty:
             continue
         if any(re.match(pat, t) for pat in drop_patterns):
@@ -479,10 +534,11 @@ def render_unit(chapters: list[dict], unit: dict, tts: bool = True, llm: bool = 
     # A whole chapter whose References heading sits mid-page still trims there.
     start, stop = unit.get("start"), unit.get("stop") or ch.get("body_stop")
     skip = unit.get("skip")
+    o_start, o_stop = unit.get("start_outline"), unit.get("stop_outline")
     seq_path = out_dir / "reading_sequence.json"
     if _is_rendered(out_dir):
         return "skipped (already rendered)"
-    if out_dir.exists() and not _prepared(seq_path, trimmed=bool(start or stop or skip)):
+    if out_dir.exists() and not _prepared(seq_path, trimmed=bool(start or stop or skip or o_start or o_stop)):
         # Empty dir = claimed by the other machine in a split queue; anything
         # else half-made is left for a human to look at, never overwritten.
         raise RuntimeError(f"{out_dir} exists but isn't a resumable unit -- leaving it alone")
@@ -496,20 +552,28 @@ def render_unit(chapters: list[dict], unit: dict, tts: bool = True, llm: bool = 
         note = ", resumed at TTS"
     else:
         pdf = str(BOOK["pdf"])
-        p0 = heading_page(pdf, start, ch["pdf_start"], ch["body_end"]) if start else ch["pdf_start"]
-        p1 = heading_page(pdf, stop, p0, ch["body_end"]) if stop else ch["body_end"]
+        pos0 = outline_pos(pdf, o_start, ch["pdf_start"], ch["body_end"]) if o_start else None
+        pos1 = outline_pos(pdf, o_stop, ch["pdf_start"], ch["body_end"] + 1) if o_stop else None
+        p0 = pos0[0] if pos0 else heading_page(pdf, start, ch["pdf_start"], ch["body_end"]) if start else ch["pdf_start"]
+        p1 = pos1[0] if pos1 else heading_page(pdf, stop, p0, ch["body_end"]) if stop else ch["body_end"]
+        start = start or o_start
+        stop = stop or o_stop
         print(f"\n##### {uid} ({ch['title']}): PDF pages {p0}-{p1}"
               f"{f', from {start!r}' if start else ''}{f', stop before {stop!r}' if stop else ''} -> {out_dir}")
 
         pipeline.main([f"{p0}-{p1}", "--out", str(out_dir), "--pdf", pdf] + ([] if llm else ["--no-llm"]))
         note = ""
-        if start or stop:
+        if pos0 or pos1:
+            kept, dropped = trim_by_position(seq_path, pos0, pos1)
+            note = f", trimmed to {kept} chunks ({dropped} bleed chunks dropped)"
+        elif start or stop:
             kept, dropped = trim_sequence(seq_path, start, stop, pdf, p0, p1)
             note = f", trimmed to {kept} chunks ({dropped} bleed chunks dropped)"
         if skip:
             n = skip_sections(seq_path, pdf, p0, p1, skip["from"], skip["until_headings"])
             note += f", {n} chunks of {skip['from']!r} skipped"
-        n = clean_sequence(seq_path, BOOK.get("drop_patterns", []), keep_empty=bool(BOOK.get("speakable")))
+        n = clean_sequence(seq_path, BOOK.get("drop_patterns", []), keep_empty=bool(BOOK.get("speakable")),
+                           margin_bands=BOOK.get("margin_bands"))
         if n:
             note += f", {n} duplicate/header chunks dropped"
         if BOOK.get("speakable"):

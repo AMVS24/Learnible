@@ -1,0 +1,5 @@
+{
+  "_comment": "Narration MP3s are served from a GitHub Release instead of Vercel (they're ~340 MB and were using up Vercel's 10 GB Fast Origin Transfer allowance). `npm run upload-audio` uploads new/changed MP3s as <book>-<chapter>.mp3 assets; `npm run sync-data` points each manifest's `audio` at the matching download URL. Delete this file to go back to serving the MP3s from Vercel.",
+  "repo": "AMVS24/Learnible",
+  "tag": "audio"
+}

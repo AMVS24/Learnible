@@ -1,0 +1,22 @@
+{
+  "_comment": "Render queue for `python -m src.chapters --book cuda queue`. `start_outline` / `stop_outline` name entries of the PDF's own outline: the unit runs from that entry's exact position on its page up to (not including) the stop entry's. Page numbers: printed = PDF - 18 (src/books.py).",
+  "units": [
+    {
+      "chapter": "1"
+    },
+    {
+      "chapter": "2",
+      "id": "ch02-s1",
+      "title": "Programming GPUs in CUDA: §2.1 Intro to CUDA C++ (partial)",
+      "start_outline": "Intro to CUDA C++",
+      "stop_outline": "Intro to CUDA Python"
+    },
+    {
+      "chapter": "2",
+      "id": "ch02-s3",
+      "title": "Programming GPUs in CUDA: §2.3 Writing SIMT Kernels (partial)",
+      "start_outline": "Writing SIMT Kernels",
+      "stop_outline": "Writing Tile Kernels"
+    }
+  ]
+}
