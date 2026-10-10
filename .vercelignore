@@ -20,3 +20,6 @@ __pycache__/
 # sync-data now ships page images as WebP; PNG copies from earlier syncs stay
 # on disk but aren't uploaded.
 /web/public/data/*/*/pages/*.png
+# Narration MP3s are served from a GitHub Release (web/audio-host.json);
+# copies left in public/data by earlier syncs aren't uploaded.
+/web/public/data/*/*/narration.mp3
