@@ -1,5 +1,6 @@
 {
-  "_comment": "Narration MP3s are served from a GitHub Release instead of Vercel (they're ~340 MB and were using up Vercel's 10 GB Fast Origin Transfer allowance). `npm run upload-audio` uploads new/changed MP3s as <book>-<chapter>.mp3 assets; `npm run sync-data` points each manifest's `audio` at the matching download URL. Delete this file to go back to serving the MP3s from Vercel.",
+  "_comment": "Narration MP3s are stored on a GitHub Release (they're ~370 MB and were using up Vercel's 10 GB Fast Origin Transfer allowance) and served from GitHub Pages: release assets download as application/octet-stream, which Safari won't play, while Pages serves audio/mpeg. `npm run upload-audio` uploads new/changed MP3s to the release as <book>-<chapter>.mp3 and triggers .github/workflows/publish-audio.yml to republish Pages; `npm run sync-data` points each manifest's `audio` at `base`. Delete this file to go back to serving the MP3s from Vercel.",
   "repo": "AMVS24/Learnible",
-  "tag": "audio"
+  "tag": "audio",
+  "base": "https://amvs24.github.io/Learnible/audio"
 }

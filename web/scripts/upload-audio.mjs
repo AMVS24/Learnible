@@ -52,3 +52,10 @@ try {
   await rm(tmp, { recursive: true, force: true });
 }
 console.log(`Audio: ${uploaded} uploaded, ${current} already current -> https://github.com/${host.repo}/releases/tag/${host.tag}`);
+
+// Republish GitHub Pages (what the site actually plays from) when anything
+// changed, or when asked with --publish.
+if (uploaded || process.argv.includes("--publish")) {
+  gh(["workflow", "run", "publish-audio.yml"]);
+  console.log("Triggered the Pages publish (.github/workflows/publish-audio.yml); it takes a minute or two.");
+}

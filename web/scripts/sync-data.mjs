@@ -50,7 +50,10 @@ async function syncChapter(src, dest, bookId, chapterId) {
   const manifest = JSON.parse(await readFile(path.join(src, "manifest.json"), "utf-8"));
   for (const page of Object.values(manifest.pages)) page.image = page.image.replace(/\.png$/, ".webp");
   if (audioHost) {
-    manifest.audio = `https://github.com/${audioHost.repo}/releases/download/${audioHost.tag}/${bookId}-${chapterId}.mp3`;
+    // Served from GitHub Pages (`base`) -- the release itself can't be
+    // played by Safari (see audio-host.json).
+    const base = audioHost.base ?? `https://github.com/${audioHost.repo}/releases/download/${audioHost.tag}`;
+    manifest.audio = `${base}/${bookId}-${chapterId}.mp3`;
   }
   await writeFile(path.join(dest, "manifest.json"), JSON.stringify(manifest));
 }

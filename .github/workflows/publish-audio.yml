@@ -1,0 +1,44 @@
+# Publishes the narration MP3s from the "audio" release to GitHub Pages
+# (https://amvs24.github.io/Learnible/audio/<book>-<chapter>.mp3).
+#
+# Why not play them straight from the release: GitHub serves release assets as
+# application/octet-stream "attachment" downloads, which Safari (every iPhone
+# browser) refuses to play. Pages serves .mp3 as audio/mpeg with range
+# requests (seeking). The MP3s stay out of git: they're pulled from the
+# release at publish time. Triggered by web/scripts/upload-audio.mjs after an
+# upload, or by hand from the Actions tab.
+name: Publish audio to GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download the release's MP3s
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p site/audio
+          gh release download audio --repo "${{ github.repository }}" --pattern '*.mp3' --dir site/audio
+          touch site/.nojekyll
+          echo '<!doctype html><title>Learnible audio</title><p>Narration audio for the Learnible web app.</p>' > site/index.html
+          ls -la site/audio
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
