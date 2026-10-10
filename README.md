@@ -36,23 +36,19 @@ can't see.
 ## Setup
 
 ```bash
-pip install -r requirements.txt
+# 1. install Ollama from https://ollama.com/download (local model server)
+# 2. in a fresh Python 3.11 env:
+python setup_env.py     # PyTorch for your GPU/CPU, requirements.txt,
+                        # chatterbox-tts, the models in ollama-models.txt,
+                        # and the web app's npm packages
 
-# one-time local model setup (free, no API key, no .env needed):
-#   1. install Ollama from https://ollama.com (it runs a local server)
-#   2. pull the classifier model:
-ollama pull qwen3:4b
-
-python -m src.main            # page range from src/config.py
-python -m src.main 46-54      # or pass a 1-based inclusive range
-python -m src.main 50         # or a single page
+python -m src.chapters scan                    # list chapters
+python -m src.chapters --book toc queue        # render a book's unit queue
 ```
 
-If Ollama isn't installed/running, the splice still runs and writes
-`output/spliced.pdf`; only the classification step is skipped. Classification
-runs entirely against a **local** Ollama model — no API key or `.env` required.
-The task is trivial and the model small, so it fits the ideation doc's 4 GB-VRAM
-floor (a GTX 1650 Ti); use `qwen3:1.7b` for a lighter/faster run.
+Everything runs locally — no API key or `.env`. The Qwen 4B prose
+sub-categorisation step is off for now (`config.SUBCATEGORIZE`; `--llm` to run
+it), so only the models in `ollama-models.txt` are needed.
 
 ## Config
 

@@ -24,6 +24,11 @@ PAGE_END = 54    # inclusive, 1-based
 # structured-output behaviour in this size class; swap in "qwen3:1.7b" for a
 # lighter/faster option (remember to `ollama pull` whichever you choose).
 MODEL = "qwen3:4b"
+# Off for now: the labels it produces (info / reference / exercise /
+# illustrative_example) aren't used by the narration or the web app yet, so
+# the step only costs time. `python -m src.main ... --llm` runs it anyway.
+# (Not in ollama-models.txt while it's off.)
+SUBCATEGORIZE = False
 OLLAMA_HOST = "http://localhost:11434"  # default local Ollama endpoint
 
 # --- Layout detection (v2) --------------------------------------------------

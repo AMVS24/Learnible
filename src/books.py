@@ -23,7 +23,9 @@ BOOKS: dict[str, dict] = {
         "pdf": config.PROJECT_ROOT / "Operating Systems - Three Easy Pieces.pdf",
         "chapters": "scan",
         "page_offset": None,
-        "speakable": False,
+        # On for every book now, not just scans: it also spells out notation
+        # the OCR-free text layer has but TTS can't say well.
+        "speakable": True,
     },
     "toc": {
         "title": "Elements of the Theory of Computation",

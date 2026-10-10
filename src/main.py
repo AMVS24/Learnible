@@ -119,7 +119,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("pages", nargs="?", default=None,
                         help="1-based inclusive range, e.g. 46-82 or 50")
     parser.add_argument("--no-llm", action="store_true",
-                        help="skip qwen3 prose sub-categorisation (CPU only)")
+                        help="skip qwen3 prose sub-categorisation (the default while "
+                             "config.SUBCATEGORIZE is off)")
+    parser.add_argument("--llm", action="store_true",
+                        help="run qwen3 prose sub-categorisation even though config.SUBCATEGORIZE is off")
     parser.add_argument("--pdf", default=None,
                         help="source PDF (default: config.PDF_PATH); src/chapters.py passes the active book's")
     parser.add_argument("--out", default=None,
@@ -138,8 +141,9 @@ def main(argv: list[str] | None = None) -> int:
     chunks = merge_cross_page(chunks)  # stitch paragraphs split across pages
     print(f"  {len(regions)} regions -> {len(chunks)} chunks, {len(figures)} figures")
 
-    # Prose sub-categorisation is the only GPU step; make it optional / graceful.
-    use_llm = not args.no_llm
+    # Prose sub-categorisation: off by default (config.SUBCATEGORIZE), opt in
+    # with --llm; graceful if Ollama isn't running.
+    use_llm = (config.SUBCATEGORIZE or args.llm) and not args.no_llm
     if use_llm:
         try:
             ollama.Client(host=config.OLLAMA_HOST).list()
@@ -152,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Sub-categorising prose with {config.MODEL} ...")
         Subcategorizer().run(chunks)
     else:
-        print("Skipping LLM sub-categorisation (--no-llm).")
+        print("Skipping LLM sub-categorisation (off; prose stays 'info').")
 
     refs, orphans = map_references(chunks, figures)
     units = build_reading_sequence(chunks, figures, refs)

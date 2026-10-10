@@ -82,7 +82,11 @@ export default function PlayerBar({
       <audio
         ref={audioRef}
         src={audioSrc}
-        preload="auto"
+        // "metadata", not "auto": "auto" made browsers download the whole
+        // chapter MP3 (up to ~65 MB) as soon as a chapter page opened, which
+        // burned through Vercel's Fast Origin Transfer allowance. Audio now
+        // streams as it's played.
+        preload="metadata"
         // While a seek is still fetching audio, ignore time updates (the
         // skip handlers already moved the page/highlight to the target), and
         // re-sync once the seek lands.

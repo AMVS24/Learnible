@@ -35,7 +35,7 @@ PAD_PT = 4
 MIN_OVERLAP = 0.6   # share of the OCR's ordinary words the rewrite must keep
 
 PROMPT = (
-    "This image is a passage from a theory-of-computation textbook. Rewrite it exactly as a lecturer "
+    "This image is a passage from a computer-science textbook. Rewrite it exactly as a lecturer "
     "would read it aloud, word for word, keeping all the prose unchanged, but speaking every mathematical "
     "symbol and expression in plain English (e.g. Σ as 'sigma', δ as 'delta', ∈ as 'is in' or 'in', "
     "⊆ as 'is a subset of', ∪ as 'union', ∅ as 'the empty set', ε or e as 'the empty string', K × Σ as "

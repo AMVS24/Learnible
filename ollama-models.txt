@@ -1,0 +1,6 @@
+# Ollama models the pipeline uses; `python setup_env.py` pulls each one.
+# One model per line; blank lines and # comments are ignored.
+
+# Vision rewrite of each passage into speakable text (src/speakable.py),
+# used for every book.
+qwen3.5:9b
