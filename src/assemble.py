@@ -192,15 +192,19 @@ def _merge_shaded(regions: list[Region]) -> list[Region]:
     """Reconstruct a callout/sidebar box from its pieces. DocLayout-YOLO splits a
     shaded box into `title` + `plain text` regions; here consecutive shaded
     text/title regions are fused into one `isolated_textbox` region so the box
-    stays intact and never reaches the prose LLM."""
+    stays intact and never reaches the prose LLM.
+
+    Monospace regions are left out: a shaded box set in a code font is a code
+    listing (the CUDA guide puts all its code on a grey background), and must
+    reach the code-listing path rather than be read aloud as a callout."""
     out: list[Region] = []
     i, n = 0, len(regions)
     while i < n:
         r = regions[i]
-        if r.shaded and r.cls in ("plain text", "title"):
+        if r.shaded and r.cls in ("plain text", "title") and not r.mono:
             group = [r]
             j = i + 1
-            while (j < n and regions[j].shaded
+            while (j < n and regions[j].shaded and not regions[j].mono
                    and regions[j].cls in ("plain text", "title")
                    and regions[j].page == r.page
                    and regions[j].bbox[1] - group[-1].bbox[3] < _CALLOUT_MERGE_GAP):
