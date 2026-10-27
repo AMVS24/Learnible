@@ -73,8 +73,9 @@ BOOKS: dict[str, dict] = {
         "speakable_glossary": (
             "In this book, read CUDA code identifiers naturally: '__global__' as 'global', '__device__' as "
             "'device', '__host__' as 'host', '__shared__' as 'shared'; 'threadIdx.x' as 'thread index x', "
-            "'blockIdx.x' as 'block index x', 'blockDim.x' as 'block dim x'; a launch like "
-            "'kernel<<<grid, block>>>' as 'kernel launched with grid, block'; function names such as "
+            "'blockIdx.x' as 'block index x', 'blockDim.x' as 'block dim x'; a kernel launch "
+            "'NAME<<<X, Y>>>' as 'NAME launched with X, Y' using the actual name and values printed (e.g. "
+            "'testKernel<<<512, 768>>>()' as 'test kernel launched with 512, 768'); function names such as "
             "'cudaMalloc' as 'cuda malloc'. Read numbers with units naturally (e.g. '48 KB' as '48 kilobytes')."
         ),
         # Running headers ("CUDA Programming Guide, Release ...") and footers

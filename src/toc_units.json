@@ -27,6 +27,21 @@
           "PUSHDOWN AUTOMATA"
         ]
       }
+    },
+    {
+      "chapter": "3",
+      "id": "ch03-s3-5",
+      "title": "Context-Free Languages: §3.3–3.5 (partial)",
+      "start": "PUSHDOWN AUTOMATA",
+      "stop": "ALGORITHMS FOR CONTEXT-FREE GRAMMARS",
+      "skip": {
+        "from": "Problems for Section",
+        "until_headings": [
+          "PUSHDOWN AUTOMATA AND CONTEXT-FREE GRAMMARS",
+          "LANGUAGES THAT ARE AND ARE NOT CONTEXT-FREE",
+          "ALGORITHMS FOR CONTEXT-FREE GRAMMARS"
+        ]
+      }
     }
   ]
 }

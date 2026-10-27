@@ -582,6 +582,10 @@ def render_unit(chapters: list[dict], unit: dict, tts: bool = True, llm: bool = 
             # (matched by page + region) instead of asking the model again.
             make_speakable(seq_path, pdf, cache=sorted((BOOK_DIR / "_superseded").glob(f"{uid}-*/reading_sequence.json")),
                            glossary=BOOK.get("speakable_glossary", ""))
+            # Re-case ALL-CAPS headings (so TTS doesn't spell them out) and drop a
+            # heading repeated by a second box.
+            from .speakable import polish_titles
+            polish_titles(seq_path)
             note += ", speakable rewrite"
         data = json.loads(seq_path.read_text(encoding="utf-8"))
         data["source"]["page_offset"] = BOOK["page_offset"]
