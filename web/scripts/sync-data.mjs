@@ -79,6 +79,18 @@ async function main() {
       const present = await Promise.all(CHAPTER_FILES.map((f) => exists(path.join(src, f))));
       ch.rendered = present.every(Boolean);
       if (!ch.rendered) continue;
+      // With hosted audio, only list a chapter once its MP3 is actually
+      // published -- otherwise a chapter that finished rendering after the
+      // last `upload-audio` would go live with a dead audio link.
+      if (audioHost?.base) {
+        const url = `${audioHost.base}/${catalog.id}-${ch.id}.mp3`;
+        const ok = await fetch(url, { method: "HEAD" }).then((r) => r.ok, () => false);
+        if (!ok) {
+          ch.rendered = false;
+          console.warn(`  SKIP ${catalog.id}/${ch.id}: its audio isn't published yet (${url}) -- run \`npm run upload-audio\` first`);
+          continue;
+        }
+      }
       await syncChapter(src, path.join(bookOut, ch.id), catalog.id, ch.id);
       console.log(`  synced ${catalog.id}/${ch.id}  ${ch.title}`);
     }
